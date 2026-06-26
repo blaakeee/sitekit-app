@@ -24,7 +24,7 @@ Built the complete SiteKit field capture app from HTML/CSS prototypes exported f
 
 ---
 
-## 2026-06-25 — Firebase, Auth, Audio & AI Transcription
+## 2026-06-25 — Firebase, Auth, Audio & AI Transcription (continued from 2026-06-24)
 
 ### What happened
 Added the backend infrastructure: Firebase for data sync, Google Sign-In for auth, real voice recording, and AI-powered transcription with auto-categorization. Spent significant time fighting Gradle build issues before landing on the right architecture.
