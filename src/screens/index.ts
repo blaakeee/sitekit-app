@@ -11,3 +11,4 @@ export { EmployeeCertsScreen } from './EmployeeCertsScreen';
 export { CallScreen } from './CallScreen';
 export { SendNoteScreen } from './SendNoteScreen';
 export { InventoryScreen } from './InventoryScreen';
+export { SignInScreen } from './SignInScreen';

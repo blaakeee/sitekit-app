@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, Pressable, StyleSheet, Animated, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { jobs, crew } from '../data/mockData';
+import { useData } from '../contexts';
+import { useRecorder } from '../services/audioService';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'VoiceRecord'>;
@@ -24,52 +25,62 @@ function WaveBar({ delay, color = colors.blue }: { delay: number; color?: string
 
   return (
     <Animated.View
-      style={[
-        styles.waveBar,
-        { backgroundColor: color, transform: [{ scaleY: anim }] },
-      ]}
+      style={[styles.waveBar, { backgroundColor: color, transform: [{ scaleY: anim }] }]}
     />
   );
 }
 
 export function VoiceRecordScreen({ navigation, route }: Props) {
-  const [isRecording, setIsRecording] = useState(false);
-  const [seconds, setSeconds] = useState(0);
+  const { jobs, crew } = useData();
   const job = jobs.find((j) => j.id === route.params.jobId) ?? jobs[0];
+  const recorder = useRecorder();
 
-  useEffect(() => {
-    if (!isRecording) return;
-    const interval = setInterval(() => setSeconds((s) => s + 1), 1000);
-    return () => clearInterval(interval);
-  }, [isRecording]);
+  const formatTime = (ms: number) => {
+    const totalSec = Math.floor(ms / 1000);
+    return `${Math.floor(totalSec / 60)}:${(totalSec % 60).toString().padStart(2, '0')}`;
+  };
 
-  const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
+  const handleStartRecording = async () => {
+    try {
+      await recorder.start();
+    } catch (error: any) {
+      Alert.alert('Recording failed', error.message);
+    }
+  };
+
+  const handleStopAndReview = async () => {
+    try {
+      const uri = await recorder.stop();
+      navigation.navigate('VoiceReview', { jobId: job.id, audioUri: uri ?? undefined });
+    } catch (error: any) {
+      Alert.alert('Error', error.message);
+    }
+  };
+
+  const handleCancel = async () => {
+    await recorder.cancel();
+  };
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const pulseOpacity = useRef(new Animated.Value(0.45)).current;
   useEffect(() => {
-    if (!isRecording) return;
-    const anim = Animated.loop(
+    if (recorder.isRecording) return;
+    const scaleAnim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 1.55, duration: 1800, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1, duration: 0, useNativeDriver: true }),
       ])
     );
-    anim.start();
-    return () => anim.stop();
-  }, [isRecording, pulseAnim]);
-
-  const pulseOpacity = useRef(new Animated.Value(0.45)).current;
-  useEffect(() => {
-    if (!isRecording) return;
-    const anim = Animated.loop(
+    const opacAnim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseOpacity, { toValue: 0, duration: 1800, useNativeDriver: true }),
         Animated.timing(pulseOpacity, { toValue: 0.45, duration: 0, useNativeDriver: true }),
       ])
     );
-    anim.start();
-    return () => anim.stop();
-  }, [isRecording, pulseOpacity]);
+    scaleAnim.start();
+    opacAnim.start();
+    return () => { scaleAnim.stop(); opacAnim.stop(); };
+  }, [recorder.isRecording, pulseAnim, pulseOpacity]);
 
   return (
     <ScreenWrapper scroll={false}>
@@ -116,12 +127,12 @@ export function VoiceRecordScreen({ navigation, route }: Props) {
       </View>
 
       {/* Idle State */}
-      {!isRecording && (
+      {!recorder.isRecording && (
         <View style={styles.idleContainer}>
           <Text style={styles.idleTitle}>Hold the mic and just talk</Text>
           <Text style={styles.idleSub}>Notes, parts, time and issues are sorted automatically.</Text>
 
-          <Pressable onPress={() => setIsRecording(true)} style={styles.micBtnWrap}>
+          <Pressable onPress={handleStartRecording} style={styles.micBtnWrap}>
             <Animated.View style={[
               styles.micPulse,
               { transform: [{ scale: pulseAnim }], opacity: pulseOpacity },
@@ -144,11 +155,11 @@ export function VoiceRecordScreen({ navigation, route }: Props) {
       )}
 
       {/* Recording State */}
-      {isRecording && (
+      {recorder.isRecording && (
         <View style={styles.recordingContainer}>
           <View style={styles.recordingBadge}>
             <View style={styles.recordingDot} />
-            <Text style={styles.recordingBadgeText}>RECORDING · {formatTime(seconds)}</Text>
+            <Text style={styles.recordingBadgeText}>RECORDING · {formatTime(recorder.durationMs)}</Text>
           </View>
 
           <View style={styles.waveContainer}>
@@ -157,40 +168,17 @@ export function VoiceRecordScreen({ navigation, route }: Props) {
             ))}
           </View>
 
-          <View style={styles.transcriptBox}>
-            <Text style={styles.transcriptText}>
-              Replaced two downlights in the hallway, used the LED 6W ones. About thirty minutes labour.{' '}
-              <Text style={styles.transcriptFade}>There's a cracked tile near the…</Text>
-            </Text>
-          </View>
-
-          <MonoLabel style={styles.sortingLabel}>Sorting as you speak</MonoLabel>
-          <View style={styles.chips}>
-            <View style={[styles.chip, { backgroundColor: colors.blueLight }]}>
-              <Icon name="inventory_2" size={16} color={colors.blue} />
-              <Text style={[styles.chipText, { color: colors.blue }]}>2× Downlight</Text>
-            </View>
-            <View style={[styles.chip, { backgroundColor: colors.blueLight }]}>
-              <Icon name="schedule" size={16} color={colors.blue} />
-              <Text style={[styles.chipText, { color: colors.blue }]}>0.5 hr labour</Text>
-            </View>
-            <View style={[styles.chip, { backgroundColor: colors.redLight }]}>
-              <Icon name="report" size={16} color={colors.red} />
-              <Text style={[styles.chipText, { color: colors.red }]}>Cracked tile</Text>
-            </View>
+          <View style={styles.listeningBox}>
+            <Icon name="mic" size={28} color={colors.blue} />
+            <Text style={styles.listeningText}>Listening...</Text>
+            <Text style={styles.listeningHint}>Transcript will appear after you stop</Text>
           </View>
 
           <View style={styles.recordingActions}>
-            <Pressable
-              style={styles.cancelBtn}
-              onPress={() => { setIsRecording(false); setSeconds(0); }}
-            >
+            <Pressable style={styles.cancelBtn} onPress={handleCancel}>
               <Text style={styles.cancelBtnText}>Cancel</Text>
             </Pressable>
-            <Pressable
-              style={styles.stopBtn}
-              onPress={() => navigation.navigate('VoiceReview', { jobId: job.id })}
-            >
+            <Pressable style={styles.stopBtn} onPress={handleStopAndReview}>
               <Icon name="stop" size={22} color={colors.textInverse} />
               <Text style={styles.stopBtnText}>Stop & review</Text>
             </Pressable>
@@ -210,9 +198,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
-  headerText: {
-    flex: 1,
-  },
+  headerText: { flex: 1 },
   headerTitle: {
     fontFamily: fonts.headingHeavy,
     fontSize: 18,
@@ -229,10 +215,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  section: {
-    paddingHorizontal: 20,
-    paddingBottom: 6,
-  },
+  section: { paddingHorizontal: 20, paddingBottom: 6 },
   crewCard: {
     backgroundColor: colors.cardBg,
     borderWidth: 1,
@@ -246,25 +229,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 12,
   },
-  manageLink: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  manageLinkText: {
-    fontFamily: fonts.heading,
-    fontSize: 13,
-    color: colors.blue,
-  },
-  crewAvatars: {
-    flexDirection: 'row',
-    gap: 6,
-  },
-  crewMember: {
-    flex: 1,
-    alignItems: 'center',
-    gap: 6,
-  },
+  manageLink: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  manageLinkText: { fontFamily: fonts.heading, fontSize: 13, color: colors.blue },
+  crewAvatars: { flexDirection: 'row', gap: 6 },
+  crewMember: { flex: 1, alignItems: 'center', gap: 6 },
   crewAvatar: {
     width: 46,
     height: 46,
@@ -272,22 +240,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  crewAvatarLead: {
-    borderWidth: 2,
-    borderColor: colors.gold,
-  },
-  crewInitials: {
-    fontFamily: fonts.headingHeavy,
-    fontSize: 16,
-    color: colors.textInverse,
-  },
-  crewName: {
-    fontFamily: fonts.heading,
-    fontSize: 13,
-    lineHeight: 14,
-    color: colors.dark,
-    textAlign: 'center',
-  },
+  crewAvatarLead: { borderWidth: 2, borderColor: colors.gold },
+  crewInitials: { fontFamily: fonts.headingHeavy, fontSize: 16, color: colors.textInverse },
+  crewName: { fontFamily: fonts.heading, fontSize: 13, lineHeight: 14, color: colors.dark, textAlign: 'center' },
   crewRoleLead: {
     fontFamily: fonts.monoBold,
     fontSize: 10,
@@ -295,19 +250,8 @@ const styles = StyleSheet.create({
     color: colors.goldDark,
     textTransform: 'uppercase',
   },
-  crewRole: {
-    fontFamily: fonts.body,
-    fontSize: 11,
-    color: colors.textSecondary,
-  },
-
-  // Idle state
-  idleContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 20,
-  },
+  crewRole: { fontFamily: fonts.body, fontSize: 11, color: colors.textSecondary },
+  idleContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20 },
   idleTitle: {
     fontFamily: fonts.headingHeavy,
     fontSize: 22,
@@ -324,11 +268,7 @@ const styles = StyleSheet.create({
     maxWidth: 260,
     marginTop: 8,
   },
-  micBtnWrap: {
-    marginTop: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  micBtnWrap: { marginTop: 40, alignItems: 'center', justifyContent: 'center' },
   micPulse: {
     position: 'absolute',
     width: 184,
@@ -349,9 +289,7 @@ const styles = StyleSheet.create({
     shadowRadius: 30,
     elevation: 12,
   },
-  tapLabel: {
-    marginTop: 32,
-  },
+  tapLabel: { marginTop: 32 },
   addonLink: {
     marginTop: 22,
     height: 48,
@@ -364,18 +302,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
   },
-  addonLinkText: {
-    fontFamily: fonts.headingHeavy,
-    fontSize: 14,
-    color: colors.dark,
-  },
-
-  // Recording state
-  recordingContainer: {
-    flex: 1,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-  },
+  addonLinkText: { fontFamily: fonts.headingHeavy, fontSize: 14, color: colors.dark },
+  recordingContainer: { flex: 1, paddingHorizontal: 20, paddingTop: 14 },
   recordingBadge: {
     alignSelf: 'center',
     flexDirection: 'row',
@@ -386,18 +314,8 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
     borderRadius: radii.full,
   },
-  recordingDot: {
-    width: 9,
-    height: 9,
-    borderRadius: 5,
-    backgroundColor: colors.red,
-  },
-  recordingBadgeText: {
-    fontFamily: fonts.monoBold,
-    fontSize: 12,
-    letterSpacing: 1.1,
-    color: colors.red,
-  },
+  recordingDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: colors.red },
+  recordingBadgeText: { fontFamily: fonts.monoBold, fontSize: 12, letterSpacing: 1.1, color: colors.red },
   waveContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -406,47 +324,25 @@ const styles = StyleSheet.create({
     height: 60,
     marginVertical: 22,
   },
-  waveBar: {
-    width: 5,
-    height: 46,
-    borderRadius: 3,
-  },
-  transcriptBox: {
+  waveBar: { width: 5, height: 46, borderRadius: 3 },
+  listeningBox: {
     backgroundColor: colors.cardBg,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radii.xl,
-    padding: 16,
-  },
-  transcriptText: {
-    fontFamily: fonts.body,
-    fontSize: 16,
-    lineHeight: 24,
-    color: colors.dark,
-  },
-  transcriptFade: {
-    color: colors.textMuted,
-  },
-  sortingLabel: {
-    marginTop: 18,
-    marginBottom: 8,
-  },
-  chips: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
+    padding: 24,
+    alignItems: 'center',
     gap: 8,
   },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: radii.full,
+  listeningText: {
+    fontFamily: fonts.headingHeavy,
+    fontSize: 18,
+    color: colors.dark,
   },
-  chipText: {
-    fontFamily: fonts.heading,
-    fontSize: 13,
+  listeningHint: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.textSecondary,
   },
   recordingActions: {
     flexDirection: 'row',
@@ -465,11 +361,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancelBtnText: {
-    fontFamily: fonts.headingHeavy,
-    fontSize: 15,
-    color: colors.dark,
-  },
+  cancelBtnText: { fontFamily: fonts.headingHeavy, fontSize: 15, color: colors.dark },
   stopBtn: {
     flex: 1,
     height: 56,
@@ -480,9 +372,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 8,
   },
-  stopBtnText: {
-    fontFamily: fonts.headingHeavy,
-    fontSize: 15,
-    color: colors.textInverse,
-  },
+  stopBtnText: { fontFamily: fonts.headingHeavy, fontSize: 15, color: colors.textInverse },
 });
