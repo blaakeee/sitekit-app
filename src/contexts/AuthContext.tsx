@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Alert } from 'react-native';
 import { onAuthStateChanged, signInWithCredential, signOut as firebaseSignOut, GoogleAuthProvider, User } from 'firebase/auth';
-import { doc, setDoc, getDocs, collection, query, where } from 'firebase/firestore';
+import { doc, getDocs, collection, query, where, writeBatch } from 'firebase/firestore';
 import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { auth, db } from '../config/firebase';
 
@@ -33,8 +34,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser);
       if (firebaseUser) {
-        const org = await findOrCreateOrg(firebaseUser);
-        setOrgId(org);
+        try {
+          const org = await findOrCreateOrg(firebaseUser);
+          setOrgId(org);
+        } catch (error) {
+          console.error('Failed to resolve organization:', error);
+          setOrgId(null);
+          Alert.alert(
+            'Setup failed',
+            'Could not connect to your organization. Check your connection and restart the app.'
+          );
+        }
       } else {
         setOrgId(null);
       }
@@ -58,8 +68,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const handleSignOut = async () => {
-    await firebaseSignOut(auth);
-    await GoogleSignin.revokeAccess().catch(() => {});
+    try {
+      await firebaseSignOut(auth);
+      await GoogleSignin.revokeAccess();
+    } catch (error) {
+      console.error('Sign-out error:', error);
+      Alert.alert('Sign out failed', 'Could not sign out completely. Try again.');
+    }
   };
 
   return (
@@ -79,13 +94,15 @@ async function findOrCreateOrg(user: User): Promise<string> {
   }
 
   const newOrgId = `org_${user.uid}`;
-  await setDoc(doc(db, 'organizations', newOrgId), {
+  const batch = writeBatch(db);
+
+  batch.set(doc(db, 'organizations', newOrgId), {
     name: `${user.displayName ?? 'My'}'s Team`,
     memberIds: [user.uid],
     createdAt: Date.now(),
   });
 
-  await setDoc(doc(db, 'organizations', newOrgId, 'members', user.uid), {
+  batch.set(doc(db, 'organizations', newOrgId, 'members', user.uid), {
     name: user.displayName ?? 'Unknown',
     initials: getInitials(user.displayName ?? 'U'),
     role: 'Owner',
@@ -96,6 +113,8 @@ async function findOrCreateOrg(user: User): Promise<string> {
     certSummary: '',
     shiftSummary: '',
   });
+
+  await batch.commit();
 
   return newOrgId;
 }

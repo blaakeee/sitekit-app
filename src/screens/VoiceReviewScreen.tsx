@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, Pressable, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { writeBatch, doc, collection, increment } from 'firebase/firestore';
+import { db } from '../config/firebase';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
 import { useAuth } from '../contexts';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { useQueueStatus } from '../hooks/useQueueStatus';
 import { transcribeAudio, parseTranscript } from '../services/transcriptionService';
-import { addCapture } from '../services/firestoreService';
 import * as queueService from '../services/queueService';
 import type { ParsedEntry } from '../types';
 import type { RootStackParamList } from '../navigation/types';
@@ -20,9 +22,14 @@ const categoryConfig: Record<ParsedEntry['category'], { icon: string; color: str
   note: { icon: 'description', color: colors.textSecondary, label: 'NOTE', borderColor: colors.textSecondary },
 };
 
+function entryKey(entry: ParsedEntry, idx: number): string {
+  return `${entry.category}_${entry.title.slice(0, 20).replace(/\s/g, '_')}_${idx}`;
+}
+
 export function VoiceReviewScreen({ navigation, route }: Props) {
   const { orgId } = useAuth();
   const { isConnected } = useNetworkStatus();
+  const queueStatus = useQueueStatus();
   const { jobId, audioUri } = route.params;
 
   const [transcript, setTranscript] = useState<string | null>(null);
@@ -77,25 +84,52 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
     } catch (error: any) {
       console.error('Transcription error:', error);
       setStage('error');
-      Alert.alert('Transcription failed', error.message);
     }
   };
 
+  const handleQueueForLater = async () => {
+    if (!orgId || !audioUri) return;
+    await queueService.enqueue({
+      type: 'transcribe',
+      audioUri,
+      jobId,
+      orgId,
+      createdAt: Date.now(),
+    });
+    navigation.goBack();
+  };
+
   const handleAddAll = async () => {
-    if (!orgId) return;
+    if (!orgId) {
+      Alert.alert('Not signed in', 'Sign in to save captures to your organization.');
+      return;
+    }
+    if (entries.length === 0) return;
+
     setSaving(true);
     try {
+      const batch = writeBatch(db);
+      const jobRef = doc(db, 'organizations', orgId, 'jobs', jobId);
+      const capturesRef = collection(db, 'organizations', orgId, 'jobs', jobId, 'captures');
+      const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
       for (const entry of entries) {
-        await addCapture(orgId, jobId, {
+        const captureRef = doc(capturesRef);
+        batch.set(captureRef, {
           type: entry.category === 'materials' ? 'materials' : entry.category === 'issue' ? 'issue' : 'voice',
           title: entry.title,
           subtitle: entry.detail ?? '',
-          time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          audioUri: audioUri ?? undefined,
-          transcript: transcript ?? undefined,
+          time: now,
+          audioUri: audioUri ?? null,
+          transcript: transcript ?? null,
           parsedEntries: entries,
+          createdAt: Date.now(),
         });
       }
+
+      batch.update(jobRef, { captureCount: increment(entries.length) });
+      await batch.commit();
+
       navigation.goBack();
     } catch (error: any) {
       Alert.alert('Save failed', error.message);
@@ -103,6 +137,8 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
       setSaving(false);
     }
   };
+
+  const totalQueued = queueStatus.pending + queueStatus.processing;
 
   return (
     <ScreenWrapper>
@@ -112,6 +148,45 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
       </View>
 
       <View style={styles.content}>
+        {/* Queue status banner */}
+        {totalQueued > 0 && stage !== 'queued' && (
+          <View style={styles.queueBanner}>
+            <Icon name="cloud_sync" size={18} color={colors.gold} />
+            <Text style={styles.queueBannerText}>
+              {totalQueued} recording{totalQueued !== 1 ? 's' : ''} waiting to sync
+            </Text>
+          </View>
+        )}
+        {queueStatus.failed > 0 && (
+          <Pressable
+            style={styles.failedBanner}
+            onPress={async () => {
+              const items = await queueService.getFailedItems();
+              Alert.alert(
+                `${items.length} failed recording${items.length !== 1 ? 's' : ''}`,
+                'These recordings could not be transcribed after multiple attempts.',
+                [
+                  { text: 'Dismiss', style: 'cancel' },
+                  {
+                    text: 'Retry all',
+                    onPress: async () => {
+                      for (const item of items) {
+                        await queueService.retryFailed(item.id);
+                      }
+                      queueStatus.refresh();
+                    },
+                  },
+                ]
+              );
+            }}
+          >
+            <Icon name="error" size={18} color={colors.red} />
+            <Text style={styles.failedBannerText}>
+              {queueStatus.failed} failed — tap to retry
+            </Text>
+          </Pressable>
+        )}
+
         {/* Loading states */}
         {stage === 'transcribing' && (
           <View style={styles.loadingCard}>
@@ -132,6 +207,9 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
             <Icon name="cloud_off" size={32} color={colors.gold} />
             <Text style={styles.queuedTitle}>Queued for processing</Text>
             <Text style={styles.queuedSub}>No connection — the recording will be transcribed when you're back online.</Text>
+            {totalQueued > 1 && (
+              <Text style={styles.queuedCount}>{totalQueued} total recordings in queue</Text>
+            )}
             <Pressable style={styles.doneBtn} onPress={() => navigation.goBack()}>
               <Text style={styles.doneBtnText}>Back to job</Text>
             </Pressable>
@@ -142,9 +220,17 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
           <View style={styles.queuedCard}>
             <Icon name="error" size={32} color={colors.red} />
             <Text style={styles.queuedTitle}>Transcription failed</Text>
-            <Pressable style={styles.retryBtn} onPress={processAudio}>
-              <Text style={styles.retryBtnText}>Retry</Text>
-            </Pressable>
+            <Text style={styles.queuedSub}>The recording couldn't be processed right now.</Text>
+            <View style={styles.errorActions}>
+              <Pressable style={styles.retryBtn} onPress={processAudio}>
+                <Icon name="refresh" size={18} color={colors.textInverse} />
+                <Text style={styles.retryBtnText}>Retry now</Text>
+              </Pressable>
+              <Pressable style={styles.queueLaterBtn} onPress={handleQueueForLater}>
+                <Icon name="schedule" size={18} color={colors.dark} />
+                <Text style={styles.queueLaterBtnText}>Queue for later</Text>
+              </Pressable>
+            </View>
           </View>
         )}
 
@@ -162,7 +248,7 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
             {entries.map((entry, idx) => {
               const config = categoryConfig[entry.category];
               return (
-                <View key={idx} style={[styles.entryCard, { borderLeftColor: config.borderColor }]}>
+                <View key={entryKey(entry, idx)} style={[styles.entryCard, { borderLeftColor: config.borderColor }]}>
                   <View style={styles.entryHeader}>
                     <View style={styles.entryLabel}>
                       <Icon name={config.icon} size={16} color={config.color} />
@@ -221,6 +307,34 @@ const styles = StyleSheet.create({
   },
   headerTitle: { fontFamily: fonts.headingHeavy, fontSize: 18, color: colors.dark },
   content: { paddingHorizontal: 20, gap: 14 },
+  queueBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.goldLight,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  queueBannerText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.goldDark,
+  },
+  failedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.redLight,
+    borderRadius: radii.md,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+  failedBannerText: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.red,
+  },
   loadingCard: {
     backgroundColor: colors.cardBg,
     borderWidth: 1,
@@ -248,6 +362,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 21,
   },
+  queuedCount: {
+    fontFamily: fonts.mono,
+    fontSize: 12,
+    color: colors.textTertiary,
+  },
   doneBtn: {
     height: 48,
     paddingHorizontal: 24,
@@ -258,16 +377,34 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   doneBtnText: { fontFamily: fonts.headingHeavy, fontSize: 15, color: colors.textInverse },
-  retryBtn: {
-    height: 48,
-    paddingHorizontal: 24,
-    borderRadius: radii.lg,
-    backgroundColor: colors.blue,
-    alignItems: 'center',
-    justifyContent: 'center',
+  errorActions: {
+    flexDirection: 'row',
+    gap: 10,
     marginTop: 8,
   },
+  retryBtn: {
+    height: 48,
+    paddingHorizontal: 20,
+    borderRadius: radii.lg,
+    backgroundColor: colors.blue,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
   retryBtnText: { fontFamily: fonts.headingHeavy, fontSize: 15, color: colors.textInverse },
+  queueLaterBtn: {
+    height: 48,
+    paddingHorizontal: 20,
+    borderRadius: radii.lg,
+    borderWidth: 2,
+    borderColor: colors.dark,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+  },
+  queueLaterBtnText: { fontFamily: fonts.headingHeavy, fontSize: 15, color: colors.dark },
   transcriptCard: {
     backgroundColor: colors.dark,
     borderRadius: radii.xl,

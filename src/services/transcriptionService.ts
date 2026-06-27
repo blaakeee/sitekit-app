@@ -1,16 +1,48 @@
 import { OPENAI_API_KEY } from '../config/apiKeys';
 import type { ParsedEntry } from '../types';
 
+const TRANSCRIPTION_TIMEOUT_MS = 30_000;
+
 export async function transcribeAudio(audioUri: string): Promise<string> {
+  if (!audioUri || (!audioUri.startsWith('file://') && !audioUri.startsWith('/'))) {
+    throw new Error(`Invalid audio URI: ${audioUri}`);
+  }
+
+  if (!OPENAI_API_KEY) {
+    throw new Error('OpenAI API key is not configured');
+  }
+
   return new Promise((resolve, reject) => {
+    let settled = false;
     const xhr = new XMLHttpRequest();
+
+    const timeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        xhr.abort();
+        reject(new Error('Transcription timed out'));
+      }
+    }, TRANSCRIPTION_TIMEOUT_MS);
+
+    const cleanup = () => {
+      clearTimeout(timeout);
+    };
+
     xhr.open('POST', 'https://api.openai.com/v1/audio/transcriptions');
     xhr.setRequestHeader('Authorization', `Bearer ${OPENAI_API_KEY}`);
 
     xhr.onload = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+
       if (xhr.status >= 200 && xhr.status < 300) {
         try {
           const data = JSON.parse(xhr.responseText);
+          if (typeof data.text !== 'string' || data.text.length === 0) {
+            reject(new Error('Whisper returned empty transcript'));
+            return;
+          }
           resolve(data.text);
         } catch {
           reject(new Error('Failed to parse Whisper response'));
@@ -19,7 +51,20 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
         reject(new Error(`Whisper API error (${xhr.status}): ${xhr.responseText}`));
       }
     };
-    xhr.onerror = () => reject(new Error('Network error during transcription'));
+
+    xhr.onerror = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Network error during transcription'));
+    };
+
+    xhr.onabort = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error('Transcription was cancelled'));
+    };
 
     const formData = new FormData();
     formData.append('file', {
@@ -31,14 +76,32 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
 
     xhr.send(formData);
   });
+}
 
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Whisper API error: ${error}`);
+const VALID_CATEGORIES = new Set<ParsedEntry['category']>(['materials', 'time', 'issue', 'note']);
+
+function validateEntry(raw: any): ParsedEntry | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  if (typeof raw.title !== 'string' || raw.title.length === 0) return null;
+
+  const category = VALID_CATEGORIES.has(raw.category) ? raw.category : 'note';
+
+  const entry: ParsedEntry = {
+    category,
+    title: raw.title.slice(0, 200),
+  };
+
+  if (typeof raw.quantity === 'number' && isFinite(raw.quantity)) {
+    entry.quantity = raw.quantity;
+  }
+  if (typeof raw.unit === 'string' && raw.unit.length > 0) {
+    entry.unit = raw.unit.slice(0, 20);
+  }
+  if (typeof raw.detail === 'string' && raw.detail.length > 0) {
+    entry.detail = raw.detail.slice(0, 500);
   }
 
-  const data = await response.json();
-  return data.text;
+  return entry;
 }
 
 const PARSE_SYSTEM_PROMPT = `You are a construction site assistant. Parse the following voice note transcript into structured entries.
@@ -51,6 +114,10 @@ Return a JSON array where each entry has:
 Only return valid JSON, no other text.`;
 
 export async function parseTranscript(transcript: string): Promise<ParsedEntry[]> {
+  if (!OPENAI_API_KEY) {
+    return [{ category: 'note', title: transcript }];
+  }
+
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -73,11 +140,28 @@ export async function parseTranscript(transcript: string): Promise<ParsedEntry[]
   }
 
   const data = await response.json();
-  const content = data.choices?.[0]?.message?.content ?? '[]';
+  const content = data.choices?.[0]?.message?.content;
+
+  if (typeof content !== 'string' || content.length === 0) {
+    return [{ category: 'note', title: transcript }];
+  }
 
   try {
-    const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    return JSON.parse(cleaned) as ParsedEntry[];
+    const cleaned = content
+      .replace(/```(?:json)?\s*/g, '')
+      .replace(/```\s*/g, '')
+      .trim();
+    const parsed = JSON.parse(cleaned);
+
+    if (!Array.isArray(parsed)) {
+      return [{ category: 'note', title: transcript }];
+    }
+
+    const validated = parsed
+      .map(validateEntry)
+      .filter((e): e is ParsedEntry => e !== null);
+
+    return validated.length > 0 ? validated : [{ category: 'note', title: transcript }];
   } catch {
     return [{ category: 'note', title: transcript }];
   }

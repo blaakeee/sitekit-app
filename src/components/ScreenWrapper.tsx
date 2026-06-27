@@ -16,7 +16,7 @@ export function ScreenWrapper({ children, scroll = true, style }: Props) {
     return (
       <ScrollView
         style={[styles.container, { paddingTop: insets.top }]}
-        contentContainerStyle={[styles.content, style]}
+        contentContainerStyle={[styles.content, { paddingBottom: insets.bottom }, style]}
         showsVerticalScrollIndicator={false}
       >
         {children}
@@ -25,7 +25,7 @@ export function ScreenWrapper({ children, scroll = true, style }: Props) {
   }
 
   return (
-    <View style={[styles.container, styles.content, { paddingTop: insets.top }, style]}>
+    <View style={[styles.container, styles.content, { paddingTop: insets.top, paddingBottom: insets.bottom }, style]}>
       {children}
     </View>
   );

@@ -23,10 +23,16 @@ export async function enqueue(
   return id;
 }
 
-export async function dequeue(): Promise<QueueItem | null> {
+export async function dequeueNext(): Promise<QueueItem | null> {
   const queue = await getQueue();
   const next = queue.find((item) => item.status === 'pending');
-  return next ?? null;
+  if (!next) return null;
+
+  const updated = queue.map((item) =>
+    item.id === next.id ? { ...item, status: 'processing' as const } : item
+  );
+  await saveQueue(updated);
+  return next;
 }
 
 export async function markComplete(id: string): Promise<void> {
@@ -48,12 +54,48 @@ export async function markFailed(id: string): Promise<void> {
   await saveQueue(updated);
 }
 
-export async function getPendingCount(): Promise<number> {
+export async function resetStaleProcessing(): Promise<void> {
   const queue = await getQueue();
-  return queue.filter((item) => item.status === 'pending').length;
+  const hadStale = queue.some((item) => item.status === 'processing');
+  if (!hadStale) return;
+
+  const updated = queue.map((item) =>
+    item.status === 'processing' ? { ...item, status: 'pending' as const } : item
+  );
+  await saveQueue(updated);
 }
 
-export async function getAllPending(): Promise<QueueItem[]> {
+export type QueueStatus = {
+  pending: number;
+  processing: number;
+  failed: number;
+};
+
+export async function getQueueStatus(): Promise<QueueStatus> {
   const queue = await getQueue();
-  return queue.filter((item) => item.status === 'pending');
+  return {
+    pending: queue.filter((item) => item.status === 'pending').length,
+    processing: queue.filter((item) => item.status === 'processing').length,
+    failed: queue.filter((item) => item.status === 'failed').length,
+  };
+}
+
+export async function getFailedItems(): Promise<QueueItem[]> {
+  const queue = await getQueue();
+  return queue.filter((item) => item.status === 'failed');
+}
+
+export async function retryFailed(id: string): Promise<void> {
+  const queue = await getQueue();
+  const updated = queue.map((item) =>
+    item.id === id && item.status === 'failed'
+      ? { ...item, status: 'pending' as const, attempts: 0 }
+      : item
+  );
+  await saveQueue(updated);
+}
+
+export async function discardFailed(id: string): Promise<void> {
+  const queue = await getQueue();
+  await saveQueue(queue.filter((item) => !(item.id === id && item.status === 'failed')));
 }

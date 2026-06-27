@@ -22,8 +22,13 @@ import { startSyncManager, stopSyncManager } from './src/services/syncManager';
 SplashScreen.preventAutoHideAsync();
 
 const webClientId = process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID ?? '';
-console.log('[SiteKit] Google webClientId:', webClientId ? webClientId.substring(0, 20) + '...' : 'EMPTY');
-GoogleSignin.configure({ webClientId });
+if (!webClientId) {
+  if (__DEV__) {
+    console.error('[SiteKit] EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID is missing — Google Sign-In will fail. Check your .env file.');
+  }
+} else {
+  GoogleSignin.configure({ webClientId });
+}
 
 export default function App() {
   const [fontsLoaded] = useFonts({

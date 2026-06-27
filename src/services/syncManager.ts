@@ -10,7 +10,9 @@ async function processQueue() {
   isProcessing = true;
 
   try {
-    let item = await queue.dequeue();
+    await queue.resetStaleProcessing();
+
+    let item = await queue.dequeueNext();
     while (item) {
       try {
         const transcript = await transcribeAudio(item.audioUri);
@@ -29,10 +31,11 @@ async function processQueue() {
         }
 
         await queue.markComplete(item.id);
-      } catch {
+      } catch (error) {
+        console.error(`Queue item ${item.id} failed:`, error);
         await queue.markFailed(item.id);
       }
-      item = await queue.dequeue();
+      item = await queue.dequeueNext();
     }
   } finally {
     isProcessing = false;
@@ -43,6 +46,13 @@ let unsubscribe: (() => void) | null = null;
 
 export function startSyncManager() {
   if (unsubscribe) return;
+
+  NetInfo.fetch().then((state) => {
+    if (state.isConnected) {
+      processQueue();
+    }
+  });
+
   unsubscribe = NetInfo.addEventListener((state) => {
     if (state.isConnected) {
       processQueue();

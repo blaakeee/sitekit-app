@@ -49,7 +49,7 @@ export type CapturedItem = {
   id: string;
   type: 'voice' | 'photo' | 'materials' | 'issue';
   title: string;
-  subtitle: string;
+  subtitle?: string;
   time: string;
   createdBy?: string;
   createdAt?: number;
@@ -89,6 +89,8 @@ export type Organization = {
   createdAt: number;
 };
 
+export type QueueItemStatus = 'pending' | 'processing' | 'failed';
+
 export type QueueItem = {
   id: string;
   type: 'transcribe';
@@ -97,5 +99,15 @@ export type QueueItem = {
   orgId: string;
   createdAt: number;
   attempts: number;
-  status: 'pending' | 'processing' | 'failed';
+  status: QueueItemStatus;
 };
+
+export type EstimatePayload = {
+  mode: 'new' | 'addon';
+  lineItems: LineItem[];
+  subtotal: number;
+  gst: number;
+  total: number;
+};
+
+export type InventoryPackedState = Record<string, boolean>;
