@@ -33,6 +33,7 @@ function WaveBar({ delay, color = colors.blue }: { delay: number; color?: string
 export function VoiceRecordScreen({ navigation, route }: Props) {
   const { jobs, crew } = useData();
   const job = jobs.find((j) => j.id === route.params.jobId) ?? jobs[0];
+  const estimateMode = route.params.estimateMode ?? false;
   const recorder = useRecorder();
 
   const formatTime = (ms: number) => {
@@ -51,7 +52,7 @@ export function VoiceRecordScreen({ navigation, route }: Props) {
   const handleStopAndReview = async () => {
     try {
       const uri = await recorder.stop();
-      navigation.navigate('VoiceReview', { jobId: job.id, audioUri: uri ?? undefined });
+      navigation.navigate('VoiceReview', { jobId: job.id, audioUri: uri ?? undefined, estimateMode });
     } catch (error: any) {
       Alert.alert('Error', error.message);
     }

@@ -1,9 +1,58 @@
-import { collection, addDoc, doc, updateDoc, setDoc, increment } from 'firebase/firestore';
+import { collection, addDoc, doc, updateDoc, setDoc, getDoc, increment, writeBatch } from 'firebase/firestore';
 import { db } from '../config/firebase';
-import type { CapturedItem, EstimatePayload, InventoryPackedState } from '../types';
+import type { CapturedItem, EstimatePayload, InventoryPackedState, Job } from '../types';
 
 function requireId(value: string, name: string) {
   if (!value) throw new Error(`${name} is required`);
+}
+
+export async function ensureJobExists(
+  orgId: string,
+  job: Job,
+) {
+  requireId(orgId, 'orgId');
+  requireId(job.id, 'jobId');
+
+  const jobRef = doc(db, 'organizations', orgId, 'jobs', job.id);
+  const snap = await getDoc(jobRef);
+  if (!snap.exists()) {
+    await setDoc(jobRef, {
+      code: job.code,
+      address: job.address,
+      trade: job.trade,
+      description: job.description,
+      status: job.status,
+      scheduledTime: job.scheduledTime ?? null,
+      quotedAmount: job.quotedAmount ?? null,
+      assignedMemberIds: job.assignedMemberIds ?? [],
+      captureCount: job.captureCount ?? 0,
+      createdAt: job.createdAt ?? Date.now(),
+    });
+  }
+}
+
+let jobCounter = 0;
+export async function createJob(
+  orgId: string,
+  fields: { address?: string; trade?: string; description?: string; quotedAmount?: number; customerName?: string },
+): Promise<string> {
+  requireId(orgId, 'orgId');
+
+  const jobRef = doc(collection(db, 'organizations', orgId, 'jobs'));
+  const code = `#JB-${String(Date.now()).slice(-4)}`;
+  await setDoc(jobRef, {
+    code,
+    address: fields.address || 'New job',
+    trade: fields.trade || '',
+    description: fields.description || '',
+    status: 'scheduled',
+    quotedAmount: fields.quotedAmount ?? null,
+    customerName: fields.customerName ?? null,
+    assignedMemberIds: [],
+    captureCount: 0,
+    createdAt: Date.now(),
+  });
+  return jobRef.id;
 }
 
 export async function addCapture(
@@ -46,11 +95,10 @@ export async function updateJobStatus(
 
 export async function addEstimate(
   orgId: string,
-  jobId: string,
+  jobId: string | null,
   estimate: EstimatePayload
-) {
+): Promise<string> {
   requireId(orgId, 'orgId');
-  requireId(jobId, 'jobId');
 
   if (!Array.isArray(estimate.lineItems) || estimate.lineItems.length === 0) {
     throw new Error('Estimate must have at least one line item');
@@ -67,7 +115,17 @@ export async function addEstimate(
     unitPrice: typeof item.unitPrice === 'number' && isFinite(item.unitPrice) ? item.unitPrice : 0,
   }));
 
-  const estimatesRef = collection(db, 'organizations', orgId, 'jobs', jobId, 'estimates');
+  let targetJobId = jobId;
+  if (!targetJobId || estimate.mode === 'new') {
+    targetJobId = await createJob(orgId, {
+      address: estimate.siteAddress || 'New job',
+      description: sanitizedItems.map((i) => i.name).join(', '),
+      quotedAmount: estimate.total,
+      customerName: estimate.customerName,
+    });
+  }
+
+  const estimatesRef = collection(db, 'organizations', orgId, 'jobs', targetJobId, 'estimates');
   await addDoc(estimatesRef, {
     mode: estimate.mode,
     lineItems: sanitizedItems,
@@ -76,6 +134,8 @@ export async function addEstimate(
     total: estimate.total,
     createdAt: Date.now(),
   });
+
+  return targetJobId;
 }
 
 export async function updateInventoryPacked(

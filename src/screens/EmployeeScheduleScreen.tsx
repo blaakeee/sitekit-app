@@ -3,12 +3,13 @@ import { View, Text, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { crew } from '../data/mockData';
+import { useData } from '../contexts';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmployeeSchedule'>;
 
 export function EmployeeScheduleScreen({ route }: Props) {
+  const { crew } = useData();
   const employee = crew.find((e) => e.id === route.params.employeeId) ?? crew[0];
 
   return (
@@ -17,7 +18,7 @@ export function EmployeeScheduleScreen({ route }: Props) {
         <BackButton />
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>{employee.name}</Text>
-          <MonoLabel>SCHEDULE · WEEK OF 23 JUN</MonoLabel>
+          <MonoLabel>SCHEDULE · {employee.shiftSummary || 'THIS WEEK'}</MonoLabel>
         </View>
       </View>
 

@@ -3,30 +3,41 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii, shadows } from '../theme';
-import { crew } from '../data/mockData';
+import { useData } from '../contexts';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CrewList'>;
 
 export function CrewListScreen({ navigation, route }: Props) {
+  const { jobId } = route.params;
+  const { jobs, crew } = useData();
+
+  const job = jobs.find((j) => j.id === jobId);
+
+  const assignedCrew = job?.assignedMemberIds?.length
+    ? crew.filter((m) => job.assignedMemberIds!.includes(m.id))
+    : crew;
+
   return (
     <ScreenWrapper>
       <View style={styles.header}>
         <BackButton />
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>Crew</Text>
-          <MonoLabel>#JB-2208 · 14 MAPLE AVE</MonoLabel>
+          {job && (
+            <MonoLabel>{job.code} · {job.address.toUpperCase()}</MonoLabel>
+          )}
         </View>
       </View>
 
-      <MonoLabel style={styles.sectionLabel}>On this job · {crew.length}</MonoLabel>
+      <MonoLabel style={styles.sectionLabel}>On this job · {assignedCrew.length}</MonoLabel>
 
       <View style={styles.list}>
-        {crew.map((member) => (
+        {assignedCrew.map((member) => (
           <Pressable
             key={member.id}
             style={styles.memberCard}
-            onPress={() => navigation.navigate('EmployeeProfile', { employeeId: member.id, jobId: route.params.jobId })}
+            onPress={() => navigation.navigate('EmployeeProfile', { employeeId: member.id, jobId })}
           >
             <View style={[styles.avatar, { backgroundColor: member.color }]}>
               <Text style={styles.avatarText}>{member.initials}</Text>
@@ -34,6 +45,9 @@ export function CrewListScreen({ navigation, route }: Props) {
             <View style={styles.memberInfo}>
               <Text style={styles.memberName}>{member.name}</Text>
               <Text style={styles.memberRole}>{member.role}</Text>
+            </View>
+            <View style={styles.statusDot}>
+              <View style={[styles.dot, member.online ? styles.dotOnline : styles.dotOffline]} />
             </View>
             <Icon name="chevron_right" size={26} color={colors.textMuted} />
           </Pressable>
@@ -106,5 +120,19 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 13,
     color: colors.textSecondary,
+  },
+  statusDot: {
+    paddingRight: 4,
+  },
+  dot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+  },
+  dotOnline: {
+    backgroundColor: colors.green,
+  },
+  dotOffline: {
+    backgroundColor: colors.textMuted,
   },
 });

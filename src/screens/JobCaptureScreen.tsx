@@ -1,9 +1,10 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii, shadows } from '../theme';
-import { jobs, crew, capturedItems } from '../data/mockData';
+import { useData } from '../contexts';
+import { useJobCaptures } from '../hooks/useJobCaptures';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'JobCapture'>;
@@ -23,7 +24,26 @@ const captureIconName: Record<string, string> = {
 };
 
 export function JobCaptureScreen({ navigation, route }: Props) {
-  const job = jobs.find((j) => j.id === route.params.jobId) ?? jobs[0];
+  const { jobId } = route.params;
+  const { jobs, crew } = useData();
+  const { data: captures, loading: capturesLoading } = useJobCaptures(jobId);
+
+  const job = jobs.find((j) => j.id === jobId);
+
+  if (!job) {
+    return (
+      <ScreenWrapper>
+        <View style={styles.header}>
+          <BackButton />
+          <Text style={styles.headerTitle}>Job not found</Text>
+        </View>
+      </ScreenWrapper>
+    );
+  }
+
+  const assignedCrew = job.assignedMemberIds?.length
+    ? crew.filter((m) => job.assignedMemberIds!.includes(m.id))
+    : crew;
 
   return (
     <ScreenWrapper>
@@ -40,7 +60,7 @@ export function JobCaptureScreen({ navigation, route }: Props) {
       <View style={styles.section}>
         <View style={styles.crewCard}>
           <View style={styles.crewHeader}>
-            <MonoLabel>Crew on site · {crew.length}</MonoLabel>
+            <MonoLabel>Crew on site · {assignedCrew.length}</MonoLabel>
             <Pressable
               style={styles.manageLink}
               onPress={() => navigation.navigate('CrewList', { jobId: job.id })}
@@ -50,7 +70,7 @@ export function JobCaptureScreen({ navigation, route }: Props) {
             </Pressable>
           </View>
           <View style={styles.crewAvatars}>
-            {crew.map((member, idx) => (
+            {assignedCrew.map((member, idx) => (
               <Pressable
                 key={member.id}
                 style={styles.crewMember}
@@ -98,32 +118,46 @@ export function JobCaptureScreen({ navigation, route }: Props) {
       </View>
 
       {/* Captured Items */}
-      <MonoLabel style={styles.sectionLabel}>Captured · {capturedItems.length} items</MonoLabel>
-      <View style={styles.capturedList}>
-        {capturedItems.map((item) => {
-          const iconStyle = captureIconMap[item.type];
-          return (
-            <Pressable
-              key={item.id}
-              style={styles.capturedItem}
-              onPress={() => {
-                if (item.type === 'voice') {
-                  navigation.navigate('VoiceReview', { jobId: job.id });
-                }
-              }}
-            >
-              <View style={[styles.capturedIcon, { backgroundColor: iconStyle.bg }]}>
-                <Icon name={captureIconName[item.type]} size={22} color={iconStyle.color} />
-              </View>
-              <View style={styles.capturedText}>
-                <Text style={styles.capturedTitle}>{item.title}</Text>
-                <Text style={styles.capturedSub} numberOfLines={1}>{item.subtitle}</Text>
-              </View>
-              <Text style={styles.capturedTime}>{item.time}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+      <MonoLabel style={styles.sectionLabel}>
+        Captured · {capturesLoading ? '…' : `${captures.length} items`}
+      </MonoLabel>
+      {capturesLoading ? (
+        <View style={styles.loadingRow}>
+          <ActivityIndicator size="small" color={colors.blue} />
+        </View>
+      ) : captures.length === 0 ? (
+        <View style={styles.emptyState}>
+          <Icon name="mic_none" size={32} color={colors.textMuted} />
+          <Text style={styles.emptyText}>No captures yet</Text>
+          <Text style={styles.emptySubtext}>Use the buttons above to record</Text>
+        </View>
+      ) : (
+        <View style={styles.capturedList}>
+          {captures.map((item) => {
+            const iconStyle = captureIconMap[item.type] ?? captureIconMap.voice;
+            return (
+              <Pressable
+                key={item.id}
+                style={styles.capturedItem}
+                onPress={() => {
+                  if (item.type === 'voice') {
+                    navigation.navigate('VoiceReview', { jobId: job.id, audioUri: item.audioUri });
+                  }
+                }}
+              >
+                <View style={[styles.capturedIcon, { backgroundColor: iconStyle.bg }]}>
+                  <Icon name={captureIconName[item.type] ?? 'description'} size={22} color={iconStyle.color} />
+                </View>
+                <View style={styles.capturedText}>
+                  <Text style={styles.capturedTitle}>{item.title}</Text>
+                  <Text style={styles.capturedSub} numberOfLines={1}>{item.subtitle}</Text>
+                </View>
+                <Text style={styles.capturedTime}>{item.time}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      )}
 
       {/* Bottom Actions */}
       <View style={styles.bottomActions}>
@@ -214,7 +248,6 @@ const styles = StyleSheet.create({
   crewAvatarLead: {
     borderWidth: 2,
     borderColor: colors.gold,
-    // Outer ring effect
   },
   crewInitials: {
     fontFamily: fonts.headingHeavy,
@@ -263,6 +296,25 @@ const styles = StyleSheet.create({
     letterSpacing: 0.6,
     textTransform: 'uppercase',
     color: colors.textInverse,
+  },
+  loadingRow: {
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 28,
+    gap: 6,
+  },
+  emptyText: {
+    fontFamily: fonts.heading,
+    fontSize: 15,
+    color: colors.textSecondary,
+  },
+  emptySubtext: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    color: colors.textTertiary,
   },
   capturedList: {
     paddingHorizontal: 20,

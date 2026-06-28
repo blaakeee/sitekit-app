@@ -1,9 +1,16 @@
+export type VoiceLineItem = {
+  name: string;
+  quantity: number | null;
+  unit: string;
+  unitPrice: number | null;
+};
+
 export type RootStackParamList = {
   Home: undefined;
   JobCapture: { jobId: string };
-  VoiceRecord: { jobId: string };
-  VoiceReview: { jobId: string; audioUri?: string };
-  Estimate: { jobId?: string; mode: 'new' | 'addon' };
+  VoiceRecord: { jobId: string; estimateMode?: boolean };
+  VoiceReview: { jobId: string; audioUri?: string; estimateMode?: boolean };
+  Estimate: { jobId?: string; mode: 'new' | 'addon'; voiceLineItems?: VoiceLineItem[] };
   FinishJob: { jobId: string };
   CrewList: { jobId: string };
   EmployeeProfile: { employeeId: string; jobId: string };

@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { crew } from '../data/mockData';
+import { useData } from '../contexts';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SendNote'>;
@@ -11,6 +11,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SendNote'>;
 const quickReplies = ['On my way', 'Running late', 'Bring the ladder', "Job's done"];
 
 export function SendNoteScreen({ navigation, route }: Props) {
+  const { crew } = useData();
   const employee = crew.find((e) => e.id === route.params.employeeId) ?? crew[0];
 
   return (

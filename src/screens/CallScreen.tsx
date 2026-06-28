@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, MonoLabel } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { crew } from '../data/mockData';
+import { useData } from '../contexts';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CallScreen'>;
@@ -35,6 +35,7 @@ function WaveBar({ delay }: { delay: number }) {
 
 export function CallScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
+  const { crew } = useData();
   const employee = crew.find((e) => e.id === route.params.employeeId) ?? crew[0];
 
   const pulseScale = useRef(new Animated.Value(1)).current;

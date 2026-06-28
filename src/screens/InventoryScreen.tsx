@@ -1,41 +1,60 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { inventoryItems } from '../data/mockData';
+import { useAuth, useData } from '../contexts';
+import { updateInventoryPacked } from '../services/firestoreService';
+import type { InventoryPackedState } from '../types';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Inventory'>;
 
-export function InventoryScreen({ navigation }: Props) {
-  const [packed, setPacked] = useState<Record<string, boolean>>({});
+const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
+const MONTH_NAMES = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'] as const;
 
-  const toggle = (key: string) => {
-    setPacked((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
+function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function InventoryScreen({ navigation }: Props) {
+  const { orgId } = useAuth();
+  const { inventoryItems } = useData();
+  const [packed, setPacked] = useState<InventoryPackedState>({});
+
+  const now = new Date();
+  const dateLabel = `${DAY_NAMES[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}`;
+
+  const toggle = useCallback((key: string) => {
+    setPacked((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      if (orgId) {
+        updateInventoryPacked(orgId, todayKey(), next).catch(() => {});
+      }
+      return next;
+    });
+  }, [orgId]);
 
   const packedCount = useMemo(
     () => inventoryItems.filter((it) => packed[it.key]).length,
-    [packed]
+    [packed, inventoryItems]
   );
   const total = inventoryItems.length;
-  const progressPct = Math.round((packedCount / total) * 100);
+  const progressPct = total > 0 ? Math.round((packedCount / total) * 100) : 0;
 
   const jobGroups = useMemo(() => {
-    const groups = [
-      { job: '14 Maple Ave', dot: '#1a3a8f' },
-      { job: '7 Crystal St', dot: '#6b6862' },
-      { job: '220 Harbour Rd', dot: '#f0a500' },
-      { job: 'All jobs', dot: '#8a857a' },
-    ];
-    return groups
-      .map((g) => ({
-        ...g,
-        items: inventoryItems.filter((it) => it.job === g.job),
-      }))
-      .filter((g) => g.items.length > 0);
-  }, []);
+    const seen = new Map<string, { dot: string; items: typeof inventoryItems }>();
+    for (const item of inventoryItems) {
+      const group = seen.get(item.job);
+      if (group) {
+        group.items.push(item);
+      } else {
+        seen.set(item.job, { dot: item.dot, items: [item] });
+      }
+    }
+    return Array.from(seen.entries()).map(([job, { dot, items }]) => ({ job, dot, items }));
+  }, [inventoryItems]);
 
   return (
     <ScreenWrapper>
@@ -43,7 +62,7 @@ export function InventoryScreen({ navigation }: Props) {
         <BackButton />
         <View style={styles.headerText}>
           <Text style={styles.headerTitle}>Daily inventory</Text>
-          <MonoLabel>MON 23 JUN · {total} ITEMS</MonoLabel>
+          <MonoLabel>{dateLabel} · {total} ITEMS</MonoLabel>
         </View>
       </View>
 

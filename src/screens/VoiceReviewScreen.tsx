@@ -5,13 +5,14 @@ import { writeBatch, doc, collection, increment } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { useAuth } from '../contexts';
+import { useAuth, useData } from '../contexts';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useQueueStatus } from '../hooks/useQueueStatus';
-import { transcribeAudio, parseTranscript } from '../services/transcriptionService';
+import { transcribeAudio, parseTranscript, parseTranscriptForEstimate } from '../services/transcriptionService';
+import type { EstimateLineResult } from '../services/transcriptionService';
 import * as queueService from '../services/queueService';
 import type { ParsedEntry } from '../types';
-import type { RootStackParamList } from '../navigation/types';
+import type { RootStackParamList, VoiceLineItem } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'VoiceReview'>;
 
@@ -27,13 +28,16 @@ function entryKey(entry: ParsedEntry, idx: number): string {
 }
 
 export function VoiceReviewScreen({ navigation, route }: Props) {
-  const { orgId } = useAuth();
+  const { orgId, user, orgLoading } = useAuth();
+  const { jobs } = useData();
   const { isConnected } = useNetworkStatus();
   const queueStatus = useQueueStatus();
-  const { jobId, audioUri } = route.params;
+  const { jobId, audioUri, estimateMode } = route.params;
+  const job = jobs.find((j) => j.id === jobId);
 
   const [transcript, setTranscript] = useState<string | null>(null);
   const [entries, setEntries] = useState<ParsedEntry[]>([]);
+  const [estimateLines, setEstimateLines] = useState<EstimateLineResult[]>([]);
   const [stage, setStage] = useState<'transcribing' | 'sorting' | 'done' | 'queued' | 'error'>('transcribing');
   const [saving, setSaving] = useState(false);
 
@@ -77,14 +81,33 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
       setTranscript(text);
 
       setStage('sorting');
-      const parsed = await parseTranscript(text);
-      setEntries(parsed);
+      if (estimateMode) {
+        const lines = await parseTranscriptForEstimate(text);
+        setEstimateLines(lines);
+      } else {
+        const parsed = await parseTranscript(text);
+        setEntries(parsed);
+      }
 
       setStage('done');
     } catch (error: any) {
       console.error('Transcription error:', error);
       setStage('error');
     }
+  };
+
+  const handleAddToEstimate = () => {
+    const voiceLineItems: VoiceLineItem[] = estimateLines.map((line) => ({
+      name: line.name,
+      quantity: line.quantity,
+      unit: line.unit,
+      unitPrice: line.unitPrice,
+    }));
+    navigation.navigate('Estimate', {
+      jobId: jobId || undefined,
+      mode: 'new',
+      voiceLineItems,
+    });
   };
 
   const handleQueueForLater = async () => {
@@ -100,8 +123,16 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
   };
 
   const handleAddAll = async () => {
-    if (!orgId) {
+    if (!user) {
       Alert.alert('Not signed in', 'Sign in to save captures to your organization.');
+      return;
+    }
+    if (orgLoading) {
+      Alert.alert('Loading', 'Your organization is still loading. Try again in a moment.');
+      return;
+    }
+    if (!orgId) {
+      Alert.alert('Organization not found', 'Could not resolve your organization. Check your connection and restart the app.');
       return;
     }
     if (entries.length === 0) return;
@@ -127,7 +158,22 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
         });
       }
 
-      batch.update(jobRef, { captureCount: increment(entries.length) });
+      if (job) {
+        batch.set(jobRef, {
+          code: job.code,
+          address: job.address,
+          trade: job.trade,
+          description: job.description,
+          status: job.status,
+          scheduledTime: job.scheduledTime ?? null,
+          quotedAmount: job.quotedAmount ?? null,
+          assignedMemberIds: job.assignedMemberIds ?? [],
+          captureCount: increment(entries.length),
+          createdAt: job.createdAt ?? Date.now(),
+        }, { merge: true });
+      } else {
+        batch.set(jobRef, { captureCount: increment(entries.length) }, { merge: true });
+      }
       await batch.commit();
 
       navigation.goBack();
@@ -235,7 +281,7 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
         )}
 
         {/* Results */}
-        {stage === 'done' && (
+        {stage === 'done' && !estimateMode && (
           <>
             {transcript && (
               <View style={styles.transcriptCard}>
@@ -273,9 +319,55 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
             })}
           </>
         )}
+
+        {/* Estimate mode results */}
+        {stage === 'done' && estimateMode && (
+          <>
+            {transcript && (
+              <View style={styles.transcriptCard}>
+                <Text style={styles.transcriptText}>"{transcript}"</Text>
+              </View>
+            )}
+
+            <MonoLabel>{estimateLines.length} line {estimateLines.length === 1 ? 'item' : 'items'} found</MonoLabel>
+
+            {estimateLines.map((line, idx) => {
+              const missingQty = line.quantity == null;
+              const missingPrice = line.unitPrice == null;
+              const hasMissing = missingQty || missingPrice;
+              return (
+                <View key={`${line.name}_${idx}`} style={[styles.entryCard, { borderLeftColor: hasMissing ? colors.gold : colors.green }]}>
+                  <View style={styles.entryHeader}>
+                    <View style={styles.entryLabel}>
+                      <Icon name="request_quote" size={16} color={hasMissing ? colors.goldDark : colors.green} />
+                      <Text style={[styles.entryLabelText, { color: hasMissing ? colors.goldDark : colors.green }]}>
+                        {hasMissing ? 'NEEDS DETAILS' : 'READY'}
+                      </Text>
+                    </View>
+                  </View>
+                  <Text style={styles.entryTitle}>{line.name}</Text>
+                  <View style={styles.estimateFields}>
+                    <View style={styles.estimateField}>
+                      <Text style={styles.estimateFieldLabel}>QTY</Text>
+                      <Text style={[styles.estimateFieldValue, missingQty && styles.estimateFieldMissing]}>
+                        {line.quantity != null ? `${line.quantity}${line.unit ? ` ${line.unit}` : ''}` : '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.estimateField}>
+                      <Text style={styles.estimateFieldLabel}>PRICE</Text>
+                      <Text style={[styles.estimateFieldValue, missingPrice && styles.estimateFieldMissing]}>
+                        {line.unitPrice != null ? `$${line.unitPrice.toFixed(2)}` : '—'}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })}
+          </>
+        )}
       </View>
 
-      {stage === 'done' && (
+      {stage === 'done' && !estimateMode && (
         <View style={styles.bottomActions}>
           <Pressable style={styles.discardBtn} onPress={() => navigation.goBack()}>
             <Text style={styles.discardBtnText}>Discard</Text>
@@ -289,6 +381,18 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
                 <Text style={styles.addBtnText}>Add all to job</Text>
               </>
             )}
+          </Pressable>
+        </View>
+      )}
+
+      {stage === 'done' && estimateMode && (
+        <View style={styles.bottomActions}>
+          <Pressable style={styles.discardBtn} onPress={() => navigation.goBack()}>
+            <Text style={styles.discardBtnText}>Discard</Text>
+          </Pressable>
+          <Pressable style={styles.addBtn} onPress={handleAddToEstimate}>
+            <Icon name="request_quote" size={22} color={colors.textInverse} />
+            <Text style={styles.addBtnText}>Add to estimate</Text>
           </Pressable>
         </View>
       )}
@@ -476,4 +580,26 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   addBtnText: { fontFamily: fonts.headingHeavy, fontSize: 15, color: colors.textInverse },
+  estimateFields: {
+    flexDirection: 'row',
+    gap: 16,
+    marginTop: 8,
+  },
+  estimateField: {
+    gap: 2,
+  },
+  estimateFieldLabel: {
+    fontFamily: fonts.mono,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: colors.textTertiary,
+  },
+  estimateFieldValue: {
+    fontFamily: fonts.monoBold,
+    fontSize: 14,
+    color: colors.dark,
+  },
+  estimateFieldMissing: {
+    color: colors.goldDark,
+  },
 });

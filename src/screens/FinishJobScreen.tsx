@@ -1,34 +1,72 @@
-import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
+import { useAuth, useData } from '../contexts';
+import { useJobCaptures } from '../hooks/useJobCaptures';
+import { completeJob } from '../services/firestoreService';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'FinishJob'>;
 
-export function FinishJobScreen({ navigation }: Props) {
+export function FinishJobScreen({ navigation, route }: Props) {
+  const { jobId } = route.params;
+  const { orgId } = useAuth();
+  const { jobs } = useData();
+  const { data: captures } = useJobCaptures(jobId);
+
+  const job = jobs.find((j) => j.id === jobId);
+
+  const [emailCustomer, setEmailCustomer] = useState(true);
+  const [completing, setCompleting] = useState(false);
+
+  const captureCount = captures.length;
+  const timeOnSite = job?.timeOnSite ?? '—';
+  const quoted = job?.quotedAmount != null ? `$${job.quotedAmount}` : '—';
+
+  const handleComplete = async () => {
+    if (!orgId) {
+      Alert.alert('Not signed in', 'Sign in to complete jobs.');
+      return;
+    }
+
+    setCompleting(true);
+    try {
+      await completeJob(orgId, jobId);
+      navigation.navigate('Home');
+    } catch (error: any) {
+      Alert.alert('Failed to complete', error.message);
+      setCompleting(false);
+    }
+  };
+
   return (
     <ScreenWrapper>
       {/* Header */}
       <View style={styles.header}>
         <BackButton />
-        <Text style={styles.headerTitle}>Finish job</Text>
+        <View>
+          <Text style={styles.headerTitle}>Finish job</Text>
+          {job && (
+            <MonoLabel>{job.code} · {job.address.toUpperCase()}</MonoLabel>
+          )}
+        </View>
       </View>
 
       <View style={styles.content}>
         {/* Stats */}
         <View style={styles.statsRow}>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>4</Text>
+            <Text style={styles.statValue}>{captureCount}</Text>
             <Text style={styles.statLabel}>captures</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>1.5h</Text>
+            <Text style={styles.statValue}>{timeOnSite}</Text>
             <Text style={styles.statLabel}>on site</Text>
           </View>
           <View style={styles.statCard}>
-            <Text style={styles.statValue}>$300</Text>
+            <Text style={styles.statValue}>{quoted}</Text>
             <Text style={styles.statLabel}>quoted</Text>
           </View>
         </View>
@@ -40,22 +78,32 @@ export function FinishJobScreen({ navigation }: Props) {
         </View>
 
         {/* Email checkbox */}
-        <View style={styles.checkRow}>
-          <View style={styles.checkBox}>
-            <Icon name="check" size={18} color={colors.textInverse} />
+        <Pressable
+          style={styles.checkRow}
+          onPress={() => setEmailCustomer((v) => !v)}
+        >
+          <View style={[styles.checkBox, !emailCustomer && styles.checkBoxOff]}>
+            {emailCustomer && <Icon name="check" size={18} color={colors.textInverse} />}
           </View>
           <Text style={styles.checkText}>Email summary + photos to customer</Text>
-        </View>
+        </Pressable>
       </View>
 
       {/* Complete button */}
       <View style={styles.bottomActions}>
         <Pressable
-          style={styles.completeBtn}
-          onPress={() => navigation.navigate('Home')}
+          style={[styles.completeBtn, completing && styles.completeBtnDisabled]}
+          onPress={handleComplete}
+          disabled={completing}
         >
-          <Icon name="cloud_done" size={24} color={colors.textInverse} />
-          <Text style={styles.completeBtnText}>Complete & sync</Text>
+          {completing ? (
+            <ActivityIndicator size="small" color={colors.textInverse} />
+          ) : (
+            <>
+              <Icon name="cloud_done" size={24} color={colors.textInverse} />
+              <Text style={styles.completeBtnText}>Complete & sync</Text>
+            </>
+          )}
         </Pressable>
       </View>
     </ScreenWrapper>
@@ -132,6 +180,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  checkBoxOff: {
+    backgroundColor: 'transparent',
+    borderWidth: 2,
+    borderColor: colors.border,
+  },
   checkText: {
     fontFamily: fonts.bodySemiBold,
     fontSize: 15,
@@ -151,6 +204,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
+  },
+  completeBtnDisabled: {
+    opacity: 0.6,
   },
   completeBtnText: {
     fontFamily: fonts.headingHeavy,

@@ -113,6 +113,15 @@ Return a JSON array where each entry has:
 - detail: additional context (omit if not needed)
 Only return valid JSON, no other text.`;
 
+const ESTIMATE_PARSE_PROMPT = `You are a construction/trades quoting assistant. Parse the following voice note into billable line items for an estimate.
+Return a JSON array where each entry has:
+- name: short item/service description (e.g. "Downlight LED 6W", "Labour", "Call-out fee")
+- quantity: number if mentioned, otherwise null
+- unit: unit string if mentioned (e.g. "hr", "m", "×", "ea"), otherwise ""
+- unitPrice: dollar amount per unit if mentioned, otherwise null
+Extract every distinct billable item. If the speaker mentions a total price but not a per-unit price, put the total as unitPrice with quantity 1.
+Only return valid JSON, no other text.`;
+
 export async function parseTranscript(transcript: string): Promise<ParsedEntry[]> {
   if (!OPENAI_API_KEY) {
     return [{ category: 'note', title: transcript }];
@@ -164,5 +173,78 @@ export async function parseTranscript(transcript: string): Promise<ParsedEntry[]
     return validated.length > 0 ? validated : [{ category: 'note', title: transcript }];
   } catch {
     return [{ category: 'note', title: transcript }];
+  }
+}
+
+export type EstimateLineResult = {
+  name: string;
+  quantity: number | null;
+  unit: string;
+  unitPrice: number | null;
+};
+
+function validateEstimateLine(raw: any): EstimateLineResult | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  if (typeof raw.name !== 'string' || raw.name.length === 0) return null;
+
+  return {
+    name: raw.name.slice(0, 200),
+    quantity: typeof raw.quantity === 'number' && isFinite(raw.quantity) ? raw.quantity : null,
+    unit: typeof raw.unit === 'string' ? raw.unit.slice(0, 20) : '',
+    unitPrice: typeof raw.unitPrice === 'number' && isFinite(raw.unitPrice) ? raw.unitPrice : null,
+  };
+}
+
+export async function parseTranscriptForEstimate(transcript: string): Promise<EstimateLineResult[]> {
+  if (!OPENAI_API_KEY) {
+    return [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+  }
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: ESTIMATE_PARSE_PROMPT },
+        { role: 'user', content: transcript },
+      ],
+      temperature: 0.1,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    throw new Error(`Chat API error: ${error}`);
+  }
+
+  const data = await response.json();
+  const content = data.choices?.[0]?.message?.content;
+
+  if (typeof content !== 'string' || content.length === 0) {
+    return [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+  }
+
+  try {
+    const cleaned = content
+      .replace(/```(?:json)?\s*/g, '')
+      .replace(/```\s*/g, '')
+      .trim();
+    const parsed = JSON.parse(cleaned);
+
+    if (!Array.isArray(parsed)) {
+      return [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+    }
+
+    const validated = parsed
+      .map(validateEstimateLine)
+      .filter((e): e is EstimateLineResult => e !== null);
+
+    return validated.length > 0 ? validated : [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+  } catch {
+    return [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
   }
 }

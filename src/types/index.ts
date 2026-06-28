@@ -108,6 +108,8 @@ export type EstimatePayload = {
   subtotal: number;
   gst: number;
   total: number;
+  customerName?: string;
+  siteAddress?: string;
 };
 
 export type InventoryPackedState = Record<string, boolean>;

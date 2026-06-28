@@ -3,13 +3,20 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel } from '../components';
 import { colors, fonts, radii, shadows } from '../theme';
-import { jobs } from '../data/mockData';
+import { useData } from '../contexts';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
+const DAY_NAMES = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'] as const;
+const MONTH_NAMES = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'] as const;
+
 export function HomeScreen({ navigation }: Props) {
-  const inventoryTotal = 8;
+  const { jobs, inventoryItems } = useData();
+
+  const now = new Date();
+  const dayLabel = `${DAY_NAMES[now.getDay()]} ${now.getDate()} ${MONTH_NAMES[now.getMonth()]}`;
+  const scheduledCount = jobs.filter((j) => j.status !== 'completed').length;
 
   return (
     <ScreenWrapper>
@@ -21,7 +28,7 @@ export function HomeScreen({ navigation }: Props) {
           </View>
         </View>
         <Text style={styles.title}>Today's jobs</Text>
-        <MonoLabel>MON 23 JUN · 3 SCHEDULED</MonoLabel>
+        <MonoLabel>{dayLabel} · {scheduledCount} SCHEDULED</MonoLabel>
       </View>
 
       {/* New Estimate Button */}
@@ -52,7 +59,7 @@ export function HomeScreen({ navigation }: Props) {
           </View>
           <View style={styles.btnTextWrap}>
             <Text style={styles.btnTitleLight}>Daily inventory</Text>
-            <Text style={styles.btnSubMuted}>{inventoryTotal} items across today's jobs</Text>
+            <Text style={styles.btnSubMuted}>{inventoryItems.length} items across today's jobs</Text>
           </View>
           <Icon name="arrow_forward" size={26} color={colors.textInverse} />
         </Pressable>
