@@ -1,5 +1,84 @@
 # SiteKit Dev Log
 
+## 2026-06-27 — Full Firestore Wiring, Voice-to-Estimate, Code Review Hardening
+
+### What happened
+Wired every screen in the app to live Firestore data, replacing all mock data imports. Built the voice-to-estimate pipeline. Provisioned Firestore database and resolved auth/permissions issues. Completed a full code review pass addressing 13 findings. Shipped a new EAS dev build and tested on physical Android device.
+
+### Features added
+
+**All 14 screens wired to Firestore**
+- Home, JobCapture, Estimate, FinishJob, CrewList, Inventory, EmployeeProfile, EmployeeSchedule, EmployeeCerts, CallScreen, SendNote, VoiceRecord, VoiceReview, SignIn — all now pull data from Firestore via `useJobs()`, `useCrew()`, and `useInventory()` hooks
+- Mock data used as fallback only when Firestore collections are empty
+
+**Estimate screen — fully interactive**
+- Editable line items with add/remove/edit (name, qty, unit, price)
+- Mandatory customer name + site address form for new estimates
+- Saves to Firestore, auto-creates job documents
+- Validation: incomplete line items (missing qty or price) are flagged and must be filled
+
+**Voice-to-estimate pipeline**
+- Record voice note from estimate screen → Whisper transcription → GPT-4o-mini parses into billable line items
+- Separate AI prompt optimized for estimate extraction (tries to pull quantities and prices)
+- Parsed items added to estimate with missing fields highlighted for manual entry
+- Items missing qty/price show a warning badge and block submission until completed
+
+**FinishJob screen wired**
+- Live capture count from Firestore, real job stats (time on site, quoted amount)
+- "Complete & sync" calls `completeJob()` to set status in Firestore
+- Email checkbox toggles
+
+**CallScreen — real phone dialer**
+- Opens native dialer via `Linking.openURL('tel:...')` on screen mount
+
+**Firestore infrastructure**
+- Provisioned Firestore database (northamerica-northeast1 / Montréal)
+- Security rules: authenticated users only
+- `ensureJobExists()` and `createJob()` helpers prevent partial job documents
+- Voice note saves now write full job data (address, code, trade) instead of just captureCount
+
+### Code review hardening (13 issues resolved)
+
+1. **Error boundary** — app-level crash recovery screen instead of white screen
+2. **Auth persistence** — `initializeAuth` with `getReactNativePersistence(AsyncStorage)` — sessions survive app restarts
+3. **Exponential backoff** — queue retries with jitter (1s → 2s → 4s, capped at 30s)
+4. **Lazy data hooks** — split monolithic DataContext into `useJobs()`, `useCrew()`, `useInventory()` — screens only subscribe to what they need
+5. **Inventory midnight rollover** — date recomputes on app foreground
+6. **Audio file size validation** — rejects recordings over 25MB before upload
+7. **Rate limiting** — max 2 concurrent OpenAI calls, 3s cooldown between requests
+8. **Atomic writes** — `addCapture` uses `writeBatch` (capture + count increment in one operation)
+9. **Structured logger** — tagged entries (`[Auth]`, `[Sync]`, `[Transcription]`) with 200-entry ring buffer
+10. **Dynamic timeout** — 60s on cellular, 30s on wifi for Whisper uploads
+11. **Type safety** — replaced `as any` cast with typed `RNFormDataFile` interface
+12. **Instance-based sync** — `Set<string>` keyed by item ID replaces global boolean flag
+13. **Entry cap** — max 50 parsed entries from AI response
+
+### Issues resolved
+- Firestore database not provisioned → created in Firebase console (Montréal region)
+- `findOrCreateOrg` hanging → Firestore security rules were blocking, added `request.auth != null` rule
+- Voice note "Add all to job" showing "Not signed in" → `orgId` null during async org resolution, added `orgLoading` state with proper guards
+- Voice note save button spinning forever → `batch.update()` on non-existent job doc, switched to `batch.set()` with `merge: true`
+- Blank job card on home screen → voice note save created partial job doc, now writes full job data
+- Google Sign-In not working on web → added `signInWithPopup` fallback with platform detection
+- `getReactNativePersistence` TypeScript error → `// @ts-ignore` on import (known Firebase JS SDK typing gap)
+
+### Architecture changes
+- `DataProvider` context removed — replaced by standalone hooks that manage their own Firestore listeners
+- `useData()` kept as convenience wrapper but no screen uses it directly
+- New files: `src/components/ErrorBoundary.tsx`, `src/services/logger.ts`
+- Navigation types extended with `estimateMode`, `voiceLineItems`, `VoiceLineItem`
+
+### What's not yet built
+- Photo capture (button exists, no flow)
+- Time + Parts capture (button exists, no flow)
+- Flag Issue capture (button exists, no flow)
+- SendNote (UI is static, no backend)
+- Signature pad on FinishJob
+- Clock-in flow (QR code / geofence)
+- Job timer (travel + site clock)
+
+---
+
 ## 2026-06-24 — Initial Build
 
 ### What happened
