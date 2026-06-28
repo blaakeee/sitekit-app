@@ -5,10 +5,11 @@ import { writeBatch, doc, collection, increment } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { useAuth, useData } from '../contexts';
+import { useAuth, useJobs } from '../contexts';
 import { useNetworkStatus } from '../hooks/useNetworkStatus';
 import { useQueueStatus } from '../hooks/useQueueStatus';
 import { transcribeAudio, parseTranscript, parseTranscriptForEstimate } from '../services/transcriptionService';
+import { logger } from '../services/logger';
 import type { EstimateLineResult } from '../services/transcriptionService';
 import * as queueService from '../services/queueService';
 import type { ParsedEntry } from '../types';
@@ -29,7 +30,7 @@ function entryKey(entry: ParsedEntry, idx: number): string {
 
 export function VoiceReviewScreen({ navigation, route }: Props) {
   const { orgId, user, orgLoading } = useAuth();
-  const { jobs } = useData();
+  const { jobs } = useJobs();
   const { isConnected } = useNetworkStatus();
   const queueStatus = useQueueStatus();
   const { jobId, audioUri, estimateMode } = route.params;
@@ -91,7 +92,7 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
 
       setStage('done');
     } catch (error: any) {
-      console.error('Transcription error:', error);
+      logger.error('Transcription', 'Processing failed', { error: error?.message, jobId });
       setStage('error');
     }
   };

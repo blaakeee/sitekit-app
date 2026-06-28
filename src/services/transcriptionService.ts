@@ -1,7 +1,42 @@
+import { File } from 'expo-file-system';
+import NetInfo from '@react-native-community/netinfo';
 import { OPENAI_API_KEY } from '../config/apiKeys';
 import type { ParsedEntry } from '../types';
 
-const TRANSCRIPTION_TIMEOUT_MS = 30_000;
+const MAX_AUDIO_SIZE_BYTES = 25 * 1024 * 1024;
+const MAX_ENTRIES = 50;
+const MIN_CALL_INTERVAL_MS = 3_000;
+const MAX_CONCURRENT = 2;
+
+let activeCount = 0;
+let lastCallTime = 0;
+
+async function acquireSlot(): Promise<void> {
+  if (activeCount >= MAX_CONCURRENT) {
+    throw new Error('Too many transcriptions in progress. Wait for the current one to finish.');
+  }
+  const elapsed = Date.now() - lastCallTime;
+  if (elapsed < MIN_CALL_INTERVAL_MS) {
+    await new Promise((r) => setTimeout(r, MIN_CALL_INTERVAL_MS - elapsed));
+  }
+  activeCount++;
+  lastCallTime = Date.now();
+}
+
+function releaseSlot() {
+  activeCount = Math.max(0, activeCount - 1);
+}
+
+interface RNFormDataFile {
+  uri: string;
+  type: string;
+  name: string;
+}
+
+async function getTranscriptionTimeout(): Promise<number> {
+  const netInfo = await NetInfo.fetch();
+  return netInfo.type === 'cellular' ? 60_000 : 30_000;
+}
 
 export async function transcribeAudio(audioUri: string): Promise<string> {
   if (!audioUri || (!audioUri.startsWith('file://') && !audioUri.startsWith('/'))) {
@@ -12,6 +47,18 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
     throw new Error('OpenAI API key is not configured');
   }
 
+  try {
+    const file = new File(audioUri);
+    if (file.exists && file.size > MAX_AUDIO_SIZE_BYTES) {
+      throw new Error(`Recording too large (${Math.round(file.size / 1024 / 1024)}MB). Max is 25MB.`);
+    }
+  } catch (e: any) {
+    if (e.message?.includes('too large')) throw e;
+  }
+
+  await acquireSlot();
+  const timeoutMs = await getTranscriptionTimeout();
+
   return new Promise((resolve, reject) => {
     let settled = false;
     const xhr = new XMLHttpRequest();
@@ -20,12 +67,13 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
       if (!settled) {
         settled = true;
         xhr.abort();
-        reject(new Error('Transcription timed out'));
+        reject(new Error(`Transcription timed out after ${timeoutMs / 1000}s`));
       }
-    }, TRANSCRIPTION_TIMEOUT_MS);
+    }, timeoutMs);
 
     const cleanup = () => {
       clearTimeout(timeout);
+      releaseSlot();
     };
 
     xhr.open('POST', 'https://api.openai.com/v1/audio/transcriptions');
@@ -67,11 +115,8 @@ export async function transcribeAudio(audioUri: string): Promise<string> {
     };
 
     const formData = new FormData();
-    formData.append('file', {
-      uri: audioUri,
-      type: 'audio/m4a',
-      name: 'recording.m4a',
-    } as any);
+    const file: RNFormDataFile = { uri: audioUri, type: 'audio/m4a', name: 'recording.m4a' };
+    formData.append('file', file as unknown as Blob);
     formData.append('model', 'whisper-1');
 
     xhr.send(formData);
@@ -167,6 +212,7 @@ export async function parseTranscript(transcript: string): Promise<ParsedEntry[]
     }
 
     const validated = parsed
+      .slice(0, MAX_ENTRIES)
       .map(validateEntry)
       .filter((e): e is ParsedEntry => e !== null);
 
@@ -240,6 +286,7 @@ export async function parseTranscriptForEstimate(transcript: string): Promise<Es
     }
 
     const validated = parsed
+      .slice(0, MAX_ENTRIES)
       .map(validateEstimateLine)
       .filter((e): e is EstimateLineResult => e !== null);
 

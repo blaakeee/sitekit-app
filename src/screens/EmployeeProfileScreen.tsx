@@ -3,13 +3,13 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii, shadows } from '../theme';
-import { useData } from '../contexts';
+import { useCrew } from '../contexts';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmployeeProfile'>;
 
 export function EmployeeProfileScreen({ navigation, route }: Props) {
-  const { crew } = useData();
+  const { crew } = useCrew();
   const employee = crew.find((e) => e.id === route.params.employeeId) ?? crew[0];
 
   return (

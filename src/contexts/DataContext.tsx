@@ -1,31 +1,10 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { AppState } from 'react-native';
 import { collection, doc, onSnapshot, DocumentData } from 'firebase/firestore';
 import { db } from '../config/firebase';
 import { useAuth } from './AuthContext';
 import * as mock from '../data/mockData';
 import type { Job, CrewMember, InventoryItem } from '../types';
-
-type DataContextType = {
-  jobs: Job[];
-  crew: CrewMember[];
-  inventoryItems: InventoryItem[];
-  jobsLoading: boolean;
-  crewLoading: boolean;
-  inventoryLoading: boolean;
-};
-
-const DataContext = createContext<DataContextType>({
-  jobs: mock.jobs,
-  crew: mock.crew,
-  inventoryItems: mock.inventoryItems,
-  jobsLoading: false,
-  crewLoading: false,
-  inventoryLoading: false,
-});
-
-export function useData() {
-  return useContext(DataContext);
-}
 
 function mapJob(id: string, data: DocumentData): Job {
   return {
@@ -71,50 +50,77 @@ function mapInventoryItem(item: DocumentData): InventoryItem {
   };
 }
 
-export function DataProvider({ children }: { children: React.ReactNode }) {
+export function useJobs() {
   const { orgId } = useAuth();
   const [jobs, setJobs] = useState<Job[]>(mock.jobs);
-  const [crew, setCrew] = useState<CrewMember[]>(mock.crew);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(mock.inventoryItems);
-  const [jobsLoading, setJobsLoading] = useState(false);
-  const [crewLoading, setCrewLoading] = useState(false);
-  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!orgId) return;
-    setJobsLoading(true);
-    setCrewLoading(true);
-    setInventoryLoading(true);
+    setLoading(true);
 
-    const unsubJobs = onSnapshot(
+    return onSnapshot(
       collection(db, 'organizations', orgId, 'jobs'),
       (snapshot) => {
-        if (snapshot.empty) {
-          setJobs(mock.jobs);
-        } else {
-          setJobs(snapshot.docs.map((d) => mapJob(d.id, d.data())));
-        }
-        setJobsLoading(false);
+        setJobs(snapshot.empty ? mock.jobs : snapshot.docs.map((d) => mapJob(d.id, d.data())));
+        setLoading(false);
       },
-      () => setJobsLoading(false)
+      () => setLoading(false)
     );
+  }, [orgId]);
 
-    const unsubMembers = onSnapshot(
+  return { jobs, jobsLoading: loading };
+}
+
+export function useCrew() {
+  const { orgId } = useAuth();
+  const [crew, setCrew] = useState<CrewMember[]>(mock.crew);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!orgId) return;
+    setLoading(true);
+
+    return onSnapshot(
       collection(db, 'organizations', orgId, 'members'),
       (snapshot) => {
-        if (snapshot.empty) {
-          setCrew(mock.crew);
-        } else {
-          setCrew(snapshot.docs.map((d) => mapCrewMember(d.id, d.data())));
-        }
-        setCrewLoading(false);
+        setCrew(snapshot.empty ? mock.crew : snapshot.docs.map((d) => mapCrewMember(d.id, d.data())));
+        setLoading(false);
       },
-      () => setCrewLoading(false)
+      () => setLoading(false)
     );
+  }, [orgId]);
 
-    const today = new Date().toISOString().split('T')[0];
-    const unsubInventory = onSnapshot(
-      doc(db, 'organizations', orgId, 'inventory', today),
+  return { crew, crewLoading: loading };
+}
+
+function todayKey(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+export function useInventory() {
+  const { orgId } = useAuth();
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(mock.inventoryItems);
+  const [loading, setLoading] = useState(false);
+  const [dateKey, setDateKey] = useState(todayKey);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') {
+        const current = todayKey();
+        setDateKey((prev) => (prev !== current ? current : prev));
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
+  useEffect(() => {
+    if (!orgId) return;
+    setLoading(true);
+
+    return onSnapshot(
+      doc(db, 'organizations', orgId, 'inventory', dateKey),
       (snapshot) => {
         if (snapshot.exists()) {
           const data = snapshot.data();
@@ -123,21 +129,18 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         } else {
           setInventoryItems(mock.inventoryItems);
         }
-        setInventoryLoading(false);
+        setLoading(false);
       },
-      () => setInventoryLoading(false)
+      () => setLoading(false)
     );
+  }, [orgId, dateKey]);
 
-    return () => {
-      unsubJobs();
-      unsubMembers();
-      unsubInventory();
-    };
-  }, [orgId]);
+  return { inventoryItems, inventoryLoading: loading };
+}
 
-  return (
-    <DataContext.Provider value={{ jobs, crew, inventoryItems, jobsLoading, crewLoading, inventoryLoading }}>
-      {children}
-    </DataContext.Provider>
-  );
+export function useData() {
+  const { jobs, jobsLoading } = useJobs();
+  const { crew, crewLoading } = useCrew();
+  const { inventoryItems, inventoryLoading } = useInventory();
+  return { jobs, crew, inventoryItems, jobsLoading, crewLoading, inventoryLoading };
 }

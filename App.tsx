@@ -15,7 +15,8 @@ import { JetBrainsMono_500Medium } from '@expo-google-fonts/jetbrains-mono/500Me
 import { JetBrainsMono_600SemiBold } from '@expo-google-fonts/jetbrains-mono/600SemiBold';
 import { JetBrainsMono_700Bold } from '@expo-google-fonts/jetbrains-mono/700Bold';
 import { MaterialSymbolsOutlined_500Medium } from '@expo-google-fonts/material-symbols-outlined/500Medium';
-import { AuthProvider, DataProvider } from './src/contexts';
+import { AuthProvider } from './src/contexts';
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { RootNavigator } from './src/navigation/RootNavigator';
 import { startSyncManager, stopSyncManager } from './src/services/syncManager';
 
@@ -63,18 +64,18 @@ export default function App() {
   }
 
   return (
-    <SafeAreaProvider>
-      <View style={styles.container} onLayout={onLayoutRootView}>
-        <AuthProvider>
-          <DataProvider>
+    <ErrorBoundary>
+      <SafeAreaProvider>
+        <View style={styles.container} onLayout={onLayoutRootView}>
+          <AuthProvider>
             <NavigationContainer>
               <RootNavigator />
             </NavigationContainer>
-          </DataProvider>
-        </AuthProvider>
-        <StatusBar style="dark" />
-      </View>
-    </SafeAreaProvider>
+          </AuthProvider>
+          <StatusBar style="dark" />
+        </View>
+      </SafeAreaProvider>
+    </ErrorBoundary>
   );
 }
 

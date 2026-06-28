@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, Alert, ActivityIndicator } from 'rea
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { useAuth, useData } from '../contexts';
+import { useAuth, useJobs } from '../contexts';
 import { useJobCaptures } from '../hooks/useJobCaptures';
 import { completeJob } from '../services/firestoreService';
 import type { RootStackParamList } from '../navigation/types';
@@ -13,7 +13,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'FinishJob'>;
 export function FinishJobScreen({ navigation, route }: Props) {
   const { jobId } = route.params;
   const { orgId } = useAuth();
-  const { jobs } = useData();
+  const { jobs } = useJobs();
   const { data: captures } = useJobCaptures(jobId);
 
   const job = jobs.find((j) => j.id === jobId);

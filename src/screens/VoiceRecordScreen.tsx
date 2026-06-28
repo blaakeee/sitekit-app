@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, Animated, Alert } from 'react-native
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { useData } from '../contexts';
+import { useJobs, useCrew } from '../contexts';
 import { useRecorder } from '../services/audioService';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -31,7 +31,8 @@ function WaveBar({ delay, color = colors.blue }: { delay: number; color?: string
 }
 
 export function VoiceRecordScreen({ navigation, route }: Props) {
-  const { jobs, crew } = useData();
+  const { jobs } = useJobs();
+  const { crew } = useCrew();
   const job = jobs.find((j) => j.id === route.params.jobId) ?? jobs[0];
   const estimateMode = route.params.estimateMode ?? false;
   const recorder = useRecorder();

@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet, ActivityIndicator } from 'react-nati
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii, shadows } from '../theme';
-import { useData } from '../contexts';
+import { useJobs, useCrew } from '../contexts';
 import { useJobCaptures } from '../hooks/useJobCaptures';
 import type { RootStackParamList } from '../navigation/types';
 
@@ -25,7 +25,8 @@ const captureIconName: Record<string, string> = {
 
 export function JobCaptureScreen({ navigation, route }: Props) {
   const { jobId } = route.params;
-  const { jobs, crew } = useData();
+  const { jobs } = useJobs();
+  const { crew } = useCrew();
   const { data: captures, loading: capturesLoading } = useJobCaptures(jobId);
 
   const job = jobs.find((j) => j.id === jobId);

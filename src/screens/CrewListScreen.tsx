@@ -3,14 +3,15 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii, shadows } from '../theme';
-import { useData } from '../contexts';
+import { useJobs, useCrew } from '../contexts';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CrewList'>;
 
 export function CrewListScreen({ navigation, route }: Props) {
   const { jobId } = route.params;
-  const { jobs, crew } = useData();
+  const { jobs } = useJobs();
+  const { crew } = useCrew();
 
   const job = jobs.find((j) => j.id === jobId);
 

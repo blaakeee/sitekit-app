@@ -3,13 +3,13 @@ import { View, Text, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { useData } from '../contexts';
+import { useCrew } from '../contexts';
 import type { RootStackParamList } from '../navigation/types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmployeeSchedule'>;
 
 export function EmployeeScheduleScreen({ route }: Props) {
-  const { crew } = useData();
+  const { crew } = useCrew();
   const employee = crew.find((e) => e.id === route.params.employeeId) ?? crew[0];
 
   return (

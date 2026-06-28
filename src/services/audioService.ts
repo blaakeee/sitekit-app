@@ -8,6 +8,7 @@ import {
 import { File, Directory, Paths } from 'expo-file-system';
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Linking, Platform } from 'react-native';
+import { logger } from './logger';
 
 const RECORDINGS_DIR = 'recordings';
 
@@ -120,7 +121,7 @@ export function useRecorder() {
     try {
       return await persistRecording(cacheUri);
     } catch (error) {
-      console.warn('Failed to persist recording, using cache URI:', error);
+      logger.warn('Audio', 'Failed to persist recording, using cache URI', { error: String(error) });
       return cacheUri;
     }
   };

@@ -3,6 +3,7 @@ import { Alert, Platform } from 'react-native';
 import { onAuthStateChanged, signInWithCredential, signInWithPopup, signOut as firebaseSignOut, GoogleAuthProvider, User } from 'firebase/auth';
 import { doc, getDocs, collection, query, where, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
+import { logger } from '../services/logger';
 
 let GoogleSignin: any = null;
 if (Platform.OS !== 'web') {
@@ -48,7 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const org = await findOrCreateOrg(firebaseUser);
           setOrgId(org);
         } catch (error: any) {
-          console.error('Failed to resolve organization:', error);
+          logger.error('Auth', 'Failed to resolve organization', { error: error?.message });
           setOrgId(null);
           Alert.alert(
             'Setup failed',
@@ -78,8 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const credential = GoogleAuthProvider.credential(idToken);
         await signInWithCredential(auth, credential);
       }
-    } catch (error) {
-      console.error('Google Sign-In error:', error);
+    } catch (error: any) {
+      logger.error('Auth', 'Google Sign-In failed', { error: error?.message });
       throw error;
     }
   };
@@ -90,8 +91,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (Platform.OS !== 'web' && GoogleSignin) {
         await GoogleSignin.revokeAccess();
       }
-    } catch (error) {
-      console.error('Sign-out error:', error);
+    } catch (error: any) {
+      logger.error('Auth', 'Sign-out failed', { error: error?.message });
       Alert.alert('Sign out failed', 'Could not sign out completely. Try again.');
     }
   };
@@ -116,9 +117,9 @@ async function findOrCreateOrg(user: User): Promise<string> {
   const orgsRef = collection(db, 'organizations');
   const q = query(orgsRef, where('memberIds', 'array-contains', user.uid));
 
-  console.log('[Auth] Finding org for user:', user.uid);
+  logger.info('Auth', 'Finding org for user', { uid: user.uid });
   const snapshot = await withTimeout(getDocs(q), 10000, 'Org lookup');
-  console.log('[Auth] Org query returned:', snapshot.size, 'results');
+  logger.info('Auth', 'Org query returned', { count: snapshot.size });
 
   if (!snapshot.empty) {
     return snapshot.docs[0].id;
@@ -145,7 +146,7 @@ async function findOrCreateOrg(user: User): Promise<string> {
     shiftSummary: '',
   });
 
-  console.log('[Auth] Creating new org:', newOrgId);
+  logger.info('Auth', 'Creating new org', { orgId: newOrgId });
   await withTimeout(batch.commit(), 10000, 'Org creation');
 
   return newOrgId;

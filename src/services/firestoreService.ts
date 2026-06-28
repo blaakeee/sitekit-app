@@ -64,8 +64,10 @@ export async function addCapture(
   requireId(jobId, 'jobId');
   if (!capture.title) throw new Error('Capture title is required');
 
-  const capturesRef = collection(db, 'organizations', orgId, 'jobs', jobId, 'captures');
-  await addDoc(capturesRef, {
+  const batch = writeBatch(db);
+
+  const captureRef = doc(collection(db, 'organizations', orgId, 'jobs', jobId, 'captures'));
+  batch.set(captureRef, {
     type: capture.type,
     title: capture.title,
     subtitle: capture.subtitle ?? '',
@@ -78,7 +80,9 @@ export async function addCapture(
   });
 
   const jobRef = doc(db, 'organizations', orgId, 'jobs', jobId);
-  await updateDoc(jobRef, { captureCount: increment(1) });
+  batch.set(jobRef, { captureCount: increment(1) }, { merge: true });
+
+  await batch.commit();
 }
 
 export async function updateJobStatus(

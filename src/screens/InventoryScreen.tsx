@@ -3,7 +3,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii } from '../theme';
-import { useAuth, useData } from '../contexts';
+import { useAuth, useInventory } from '../contexts';
 import { updateInventoryPacked } from '../services/firestoreService';
 import type { InventoryPackedState } from '../types';
 import type { RootStackParamList } from '../navigation/types';
@@ -20,7 +20,7 @@ function todayKey(): string {
 
 export function InventoryScreen({ navigation }: Props) {
   const { orgId } = useAuth();
-  const { inventoryItems } = useData();
+  const { inventoryItems } = useInventory();
   const [packed, setPacked] = useState<InventoryPackedState>({});
 
   const now = new Date();

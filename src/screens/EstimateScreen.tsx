@@ -4,7 +4,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScreenWrapper, Icon, MonoLabel, BackButton } from '../components';
 import { colors, fonts, radii, shadows } from '../theme';
 import { useAuth } from '../contexts';
-import { useData } from '../contexts';
+import { useJobs } from '../contexts';
 import { addEstimate, ensureJobExists } from '../services/firestoreService';
 import type { LineItem } from '../types';
 import type { RootStackParamList } from '../navigation/types';
@@ -29,7 +29,7 @@ export function EstimateScreen({ navigation, route }: Props) {
   const isNew = mode === 'new';
 
   const { orgId } = useAuth();
-  const { jobs } = useData();
+  const { jobs } = useJobs();
   const job = jobId ? jobs.find((j) => j.id === jobId) : null;
 
   const [customerName, setCustomerName] = useState('');
