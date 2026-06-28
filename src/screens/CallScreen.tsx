@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, Pressable, StyleSheet, Animated } from 'react-native';
+import { View, Text, Pressable, StyleSheet, Animated, Linking } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Icon, MonoLabel } from '../components';
@@ -37,6 +37,13 @@ export function CallScreen({ navigation, route }: Props) {
   const insets = useSafeAreaInsets();
   const { crew } = useCrew();
   const employee = crew.find((e) => e.id === route.params.employeeId) ?? crew[0];
+
+  useEffect(() => {
+    const phoneNumber = employee.phone.replace(/\s/g, '');
+    if (phoneNumber) {
+      Linking.openURL(`tel:${phoneNumber}`);
+    }
+  }, [employee.phone]);
 
   const pulseScale = useRef(new Animated.Value(1)).current;
   const pulseOpacity = useRef(new Animated.Value(0.4)).current;
