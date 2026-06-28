@@ -13,11 +13,14 @@ import {
   EmployeeProfileScreen,
   EmployeeScheduleScreen,
   EmployeeCertsScreen,
+  FlagIssueScreen,
+  PhotoViewerScreen,
   CallScreen,
   SendNoteScreen,
   InventoryScreen,
   SignInScreen,
 } from '../screens';
+import { CameraScreen } from '../features/camera';
 import { colors } from '../theme';
 import type { RootStackParamList } from './types';
 
@@ -56,6 +59,9 @@ export function RootNavigator() {
       <Stack.Screen name="EmployeeProfile" component={EmployeeProfileScreen} />
       <Stack.Screen name="EmployeeSchedule" component={EmployeeScheduleScreen} />
       <Stack.Screen name="EmployeeCerts" component={EmployeeCertsScreen} />
+      <Stack.Screen name="PhotoCapture" component={CameraScreen} />
+      <Stack.Screen name="PhotoViewer" component={PhotoViewerScreen} />
+      <Stack.Screen name="FlagIssue" component={FlagIssueScreen} />
       <Stack.Screen name="CallScreen" component={CallScreen} />
       <Stack.Screen name="SendNote" component={SendNoteScreen} />
       <Stack.Screen name="Inventory" component={InventoryScreen} />

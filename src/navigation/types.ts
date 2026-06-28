@@ -16,6 +16,9 @@ export type RootStackParamList = {
   EmployeeProfile: { employeeId: string; jobId: string };
   EmployeeSchedule: { employeeId: string };
   EmployeeCerts: { employeeId: string };
+  PhotoCapture: { jobId: string; tag: 'before' | 'during' | 'after' };
+  PhotoViewer: { uri: string; title: string };
+  FlagIssue: { jobId: string };
   CallScreen: { employeeId: string };
   SendNote: { employeeId: string };
   Inventory: undefined;

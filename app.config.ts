@@ -29,6 +29,9 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     'expo-font',
     'expo-splash-screen',
     'expo-audio',
+    'expo-camera',
+    'expo-image-picker',
+    'expo-location',
     '@react-native-google-signin/google-signin',
   ],
   extra: {

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Alert, Platform } from 'react-native';
 import { onAuthStateChanged, signInWithCredential, signInWithPopup, signOut as firebaseSignOut, GoogleAuthProvider, User } from 'firebase/auth';
-import { doc, getDocs, collection, query, where, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, writeBatch } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import { logger } from '../services/logger';
 
@@ -114,27 +114,26 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
 }
 
 async function findOrCreateOrg(user: User): Promise<string> {
-  const orgsRef = collection(db, 'organizations');
-  const q = query(orgsRef, where('memberIds', 'array-contains', user.uid));
+  const orgId = `org_${user.uid}`;
+  const orgRef = doc(db, 'organizations', orgId);
 
-  logger.info('Auth', 'Finding org for user', { uid: user.uid });
-  const snapshot = await withTimeout(getDocs(q), 10000, 'Org lookup');
-  logger.info('Auth', 'Org query returned', { count: snapshot.size });
+  logger.info('Auth', 'Looking up org', { orgId });
+  const snapshot = await withTimeout(getDoc(orgRef), 10000, 'Org lookup');
 
-  if (!snapshot.empty) {
-    return snapshot.docs[0].id;
+  if (snapshot.exists()) {
+    logger.info('Auth', 'Org found', { orgId });
+    return orgId;
   }
 
-  const newOrgId = `org_${user.uid}`;
   const batch = writeBatch(db);
 
-  batch.set(doc(db, 'organizations', newOrgId), {
+  batch.set(doc(db, 'organizations', orgId), {
     name: `${user.displayName ?? 'My'}'s Team`,
     memberIds: [user.uid],
     createdAt: Date.now(),
   });
 
-  batch.set(doc(db, 'organizations', newOrgId, 'members', user.uid), {
+  batch.set(doc(db, 'organizations', orgId, 'members', user.uid), {
     name: user.displayName ?? 'Unknown',
     initials: getInitials(user.displayName ?? 'U'),
     role: 'Owner',
@@ -146,10 +145,10 @@ async function findOrCreateOrg(user: User): Promise<string> {
     shiftSummary: '',
   });
 
-  logger.info('Auth', 'Creating new org', { orgId: newOrgId });
+  logger.info('Auth', 'Creating new org', { orgId });
   await withTimeout(batch.commit(), 10000, 'Org creation');
 
-  return newOrgId;
+  return orgId;
 }
 
 function getInitials(name: string): string {

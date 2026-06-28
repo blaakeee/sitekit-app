@@ -104,7 +104,10 @@ export function JobCaptureScreen({ navigation, route }: Props) {
           <Icon name="mic" size={44} color={colors.textInverse} />
           <Text style={styles.captureButtonText}>VOICE NOTE</Text>
         </Pressable>
-        <Pressable style={[styles.captureButton, { backgroundColor: colors.gold }, shadows.buttonGold]}>
+        <Pressable
+          style={[styles.captureButton, { backgroundColor: colors.gold }, shadows.buttonGold]}
+          onPress={() => navigation.navigate('PhotoCapture', { jobId: job.id, tag: 'during' })}
+        >
           <Icon name="photo_camera" size={44} color={colors.dark} />
           <Text style={[styles.captureButtonText, { color: colors.dark }]}>PHOTO</Text>
         </Pressable>
@@ -112,7 +115,10 @@ export function JobCaptureScreen({ navigation, route }: Props) {
           <Icon name="schedule" size={44} color={colors.textInverse} />
           <Text style={styles.captureButtonText}>TIME + PARTS</Text>
         </Pressable>
-        <Pressable style={[styles.captureButton, { backgroundColor: colors.red }, shadows.buttonRed]}>
+        <Pressable
+          style={[styles.captureButton, { backgroundColor: colors.red }, shadows.buttonRed]}
+          onPress={() => navigation.navigate('FlagIssue', { jobId: job.id })}
+        >
           <Icon name="report" size={44} color={colors.textInverse} />
           <Text style={styles.captureButtonText}>FLAG ISSUE</Text>
         </Pressable>
@@ -143,6 +149,8 @@ export function JobCaptureScreen({ navigation, route }: Props) {
                 onPress={() => {
                   if (item.type === 'voice') {
                     navigation.navigate('VoiceReview', { jobId: job.id, audioUri: item.audioUri });
+                  } else if (item.type === 'photo' && item.audioUri) {
+                    navigation.navigate('PhotoViewer', { uri: item.audioUri, title: item.title });
                   }
                 }}
               >
