@@ -1,5 +1,63 @@
 # SiteKit Dev Log
 
+## 2026-06-28 — Capture Flows Complete, Estimate Costing Architecture
+
+### What happened
+Completed all four capture types on the JobCapture screen (voice, photo, time+parts, flag issue). Built the camera feature with architecture-doc-driven implementation. Restructured estimate line items with labour/material classification and estimated hours to support the forward/back costing data loop defined in the new estimate-costing-spec.
+
+### Features added
+
+**Photo capture** (`src/features/camera/`)
+- `expo-camera` CameraView as primary, `expo-image-picker` as silent fallback
+- Runtime device capability probe persisted in AsyncStorage — classifies devices as `full` or `fallback`
+- Three renditions generated on-device: thumb (200px), display (800px), web (2000px) via `expo-image-manipulator`
+- GPS metadata captured via `expo-location` (opportunistic, never blocks)
+- Haptic shutter feedback, preview with retake/confirm flow
+- Photo viewer screen for tapping captured photos in the job list
+- Upload queue stubbed (logs only) — R2 integration deferred
+
+**Flag issue capture**
+- Title (required) + description (optional) + severity picker (Low/Medium/High)
+- Saves to Firestore as `type: 'issue'` capture with severity in subtitle
+
+**Time + Parts capture**
+- Hours/minutes entry with large mono inputs + optional description
+- Add/remove parts with name and quantity
+- Atomic `writeBatch` saves time as a capture + each part as a materials capture
+
+**Estimate line items — labour/material classification**
+- Each line item now tagged as `labour` or `material` via toggle in edit form
+- Labour lines show an "Est. hours" field — the forward-costing number for v2 variance
+- Kind badge (clock/box icon) in collapsed line item view
+- Voice-to-estimate AI prompt updated to return `kind` and `estimatedHours`
+- Job description field stored on estimate for v2 agent semantic retrieval
+- `paramValues` field wired in types and Firestore save — ready for parametric templates
+
+### Architecture documents added
+- `docs/architecture/camera/CAMERA_ARCHITECTURE.md` — full camera capture pipeline spec (proof-of-work photos, before/after overlay, device detection, renditions, R2 upload)
+- `docs/architecture/camera/estimate-costing-spec/estimate-costing-spec.md` — forward/back costing data model, symmetry requirement, trainable-job contract, v2 agent architecture
+
+### Issues resolved
+- Firestore org lookup failing with membership-based security rules → switched from collection query (`where` + `getDocs`) to direct document read (`getDoc` on `org_{uid}`)
+- `StyleSheet.absoluteFillObject` removed in RN 0.85 → replaced with explicit position values
+
+### Dependencies added
+- `expo-image-picker`, `expo-image-manipulator`, `expo-location`, `expo-device`
+- All Expo managed compatible, plugins added to `app.config.ts`
+
+### What's not yet built
+- **Close-out flow rebuild** (FinishJob → per-line actual entry mapping to estimate lines) — next priority, ~1.5 hrs
+- **Variance computation + display** at close — ~30 min
+- **Variance note prompt** on large variance — ~20 min
+- **Trainable-job validation gate** — ~20 min
+- **Template CRUD** (save estimate as reusable template) — ~2 hrs
+- **Cloudflare R2 photo upload** — needs account setup + backend presign endpoint
+- **SendNote wiring** — ~15 min
+- **Job timer + clock-in** — ~5 hrs total
+- **Before/after ghost overlay** on camera — ~1 hr
+
+---
+
 ## 2026-06-27 — Full Firestore Wiring, Voice-to-Estimate, Code Review Hardening
 
 ### What happened
