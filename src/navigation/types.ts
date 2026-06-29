@@ -1,8 +1,10 @@
 export type VoiceLineItem = {
   name: string;
+  kind: 'labour' | 'material';
   quantity: number | null;
   unit: string;
   unitPrice: number | null;
+  estimatedHours: number | null;
 };
 
 export type RootStackParamList = {
@@ -16,6 +18,7 @@ export type RootStackParamList = {
   EmployeeProfile: { employeeId: string; jobId: string };
   EmployeeSchedule: { employeeId: string };
   EmployeeCerts: { employeeId: string };
+  TimeParts: { jobId: string };
   PhotoCapture: { jobId: string; tag: 'before' | 'during' | 'after' };
   PhotoViewer: { uri: string; title: string };
   FlagIssue: { jobId: string };

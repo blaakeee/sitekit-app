@@ -100,9 +100,11 @@ export function VoiceReviewScreen({ navigation, route }: Props) {
   const handleAddToEstimate = () => {
     const voiceLineItems: VoiceLineItem[] = estimateLines.map((line) => ({
       name: line.name,
+      kind: line.kind,
       quantity: line.quantity,
       unit: line.unit,
       unitPrice: line.unitPrice,
+      estimatedHours: line.estimatedHours,
     }));
     navigation.navigate('Estimate', {
       jobId: jobId || undefined,

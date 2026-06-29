@@ -161,9 +161,11 @@ Only return valid JSON, no other text.`;
 const ESTIMATE_PARSE_PROMPT = `You are a construction/trades quoting assistant. Parse the following voice note into billable line items for an estimate.
 Return a JSON array where each entry has:
 - name: short item/service description (e.g. "Downlight LED 6W", "Labour", "Call-out fee")
+- kind: "labour" for time/service/installation work, "material" for physical parts/products
 - quantity: number if mentioned, otherwise null
 - unit: unit string if mentioned (e.g. "hr", "m", "×", "ea"), otherwise ""
 - unitPrice: dollar amount per unit if mentioned, otherwise null
+- estimatedHours: number of hours if this is a labour item and hours are mentioned, otherwise null
 Extract every distinct billable item. If the speaker mentions a total price but not a per-unit price, put the total as unitPrice with quantity 1.
 Only return valid JSON, no other text.`;
 
@@ -224,26 +226,33 @@ export async function parseTranscript(transcript: string): Promise<ParsedEntry[]
 
 export type EstimateLineResult = {
   name: string;
+  kind: 'labour' | 'material';
   quantity: number | null;
   unit: string;
   unitPrice: number | null;
+  estimatedHours: number | null;
 };
 
 function validateEstimateLine(raw: any): EstimateLineResult | null {
   if (typeof raw !== 'object' || raw === null) return null;
   if (typeof raw.name !== 'string' || raw.name.length === 0) return null;
 
+  const kind = raw.kind === 'labour' ? 'labour' : 'material';
+
   return {
     name: raw.name.slice(0, 200),
+    kind,
     quantity: typeof raw.quantity === 'number' && isFinite(raw.quantity) ? raw.quantity : null,
     unit: typeof raw.unit === 'string' ? raw.unit.slice(0, 20) : '',
     unitPrice: typeof raw.unitPrice === 'number' && isFinite(raw.unitPrice) ? raw.unitPrice : null,
+    estimatedHours: kind === 'labour' && typeof raw.estimatedHours === 'number' && isFinite(raw.estimatedHours)
+      ? raw.estimatedHours : null,
   };
 }
 
 export async function parseTranscriptForEstimate(transcript: string): Promise<EstimateLineResult[]> {
   if (!OPENAI_API_KEY) {
-    return [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+    return [{ name: transcript, kind: 'material' as const, quantity: null, unit: '', unitPrice: null, estimatedHours: null }];
   }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -271,7 +280,7 @@ export async function parseTranscriptForEstimate(transcript: string): Promise<Es
   const content = data.choices?.[0]?.message?.content;
 
   if (typeof content !== 'string' || content.length === 0) {
-    return [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+    return [{ name: transcript, kind: 'material' as const, quantity: null, unit: '', unitPrice: null, estimatedHours: null }];
   }
 
   try {
@@ -282,7 +291,7 @@ export async function parseTranscriptForEstimate(transcript: string): Promise<Es
     const parsed = JSON.parse(cleaned);
 
     if (!Array.isArray(parsed)) {
-      return [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+      return [{ name: transcript, kind: 'material' as const, quantity: null, unit: '', unitPrice: null, estimatedHours: null }];
     }
 
     const validated = parsed
@@ -290,8 +299,8 @@ export async function parseTranscriptForEstimate(transcript: string): Promise<Es
       .map(validateEstimateLine)
       .filter((e): e is EstimateLineResult => e !== null);
 
-    return validated.length > 0 ? validated : [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+    return validated.length > 0 ? validated : [{ name: transcript, kind: 'material' as const, quantity: null, unit: '', unitPrice: null, estimatedHours: null }];
   } catch {
-    return [{ name: transcript, quantity: null, unit: '', unitPrice: null }];
+    return [{ name: transcript, kind: 'material' as const, quantity: null, unit: '', unitPrice: null, estimatedHours: null }];
   }
 }

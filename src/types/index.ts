@@ -66,12 +66,16 @@ export type InventoryItem = {
   dot: string;
 };
 
+export type LineItemKind = 'labour' | 'material';
+
 export type LineItem = {
   id: string;
   name: string;
+  kind: LineItemKind;
   quantity: number;
   unit: string;
   unitPrice: number;
+  estimatedHours?: number;
 };
 
 export type ParsedEntry = {
@@ -110,6 +114,8 @@ export type EstimatePayload = {
   total: number;
   customerName?: string;
   siteAddress?: string;
+  description?: string;
+  paramValues?: Record<string, number | string>;
 };
 
 export type InventoryPackedState = Record<string, boolean>;

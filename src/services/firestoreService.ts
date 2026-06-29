@@ -114,16 +114,18 @@ export async function addEstimate(
   const sanitizedItems = estimate.lineItems.map((item) => ({
     id: item.id,
     name: item.name || 'Untitled',
+    kind: item.kind || 'material',
     quantity: typeof item.quantity === 'number' && isFinite(item.quantity) ? item.quantity : 0,
     unit: item.unit || '',
     unitPrice: typeof item.unitPrice === 'number' && isFinite(item.unitPrice) ? item.unitPrice : 0,
+    estimatedHours: item.kind === 'labour' && typeof item.estimatedHours === 'number' ? item.estimatedHours : null,
   }));
 
   let targetJobId = jobId;
   if (!targetJobId || estimate.mode === 'new') {
     targetJobId = await createJob(orgId, {
       address: estimate.siteAddress || 'New job',
-      description: sanitizedItems.map((i) => i.name).join(', '),
+      description: estimate.description || sanitizedItems.map((i) => i.name).join(', '),
       quotedAmount: estimate.total,
       customerName: estimate.customerName,
     });
@@ -136,6 +138,8 @@ export async function addEstimate(
     subtotal: estimate.subtotal,
     gst: estimate.gst,
     total: estimate.total,
+    description: estimate.description ?? null,
+    paramValues: estimate.paramValues ?? null,
     createdAt: Date.now(),
   });
 

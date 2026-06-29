@@ -19,6 +19,7 @@ function makeId() {
 const EMPTY_LINE: () => LineItem = () => ({
   id: makeId(),
   name: '',
+  kind: 'material',
   quantity: 1,
   unit: '×',
   unitPrice: 0,
@@ -35,6 +36,7 @@ export function EstimateScreen({ navigation, route }: Props) {
   const [customerName, setCustomerName] = useState('');
   const [siteAddress, setSiteAddress] = useState('');
   const [customerExpanded, setCustomerExpanded] = useState(false);
+  const [jobDescription, setJobDescription] = useState('');
   const [lineItems, setLineItems] = useState<LineItem[]>([EMPTY_LINE()]);
   const [editingIdx, setEditingIdx] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
@@ -46,9 +48,11 @@ export function EstimateScreen({ navigation, route }: Props) {
       const newItems: LineItem[] = voiceLineItems.map((v) => ({
         id: makeId(),
         name: v.name,
+        kind: v.kind,
         quantity: v.quantity ?? 0,
-        unit: v.unit || '×',
+        unit: v.unit || (v.kind === 'labour' ? 'hr' : '×'),
         unitPrice: v.unitPrice ?? 0,
+        estimatedHours: v.estimatedHours ?? (v.kind === 'labour' ? (v.quantity ?? 0) : undefined),
       }));
       setLineItems((prev) => {
         const hasContent = prev.some((item) => item.name.trim() !== '');
@@ -113,6 +117,7 @@ export function EstimateScreen({ navigation, route }: Props) {
         total,
         customerName: isNew ? customerName.trim() : undefined,
         siteAddress: isNew ? siteAddress.trim() : undefined,
+        description: jobDescription.trim() || undefined,
       });
       navigation.goBack();
     } catch (error: any) {
@@ -242,6 +247,18 @@ export function EstimateScreen({ navigation, route }: Props) {
           </Pressable>
         </View>
 
+        {/* Job description */}
+        <View style={styles.descriptionSection}>
+          <TextInput
+            style={styles.jobDescInput}
+            placeholder="Job description — what's the work?"
+            placeholderTextColor={colors.textMuted}
+            value={jobDescription}
+            onChangeText={setJobDescription}
+            multiline
+          />
+        </View>
+
         {/* Line Items */}
         <MonoLabel style={styles.sectionLabel}>
           Line items · {lineItems.filter((i) => i.name.trim()).length}
@@ -262,6 +279,23 @@ export function EstimateScreen({ navigation, route }: Props) {
                     onChangeText={(text) => updateItem(idx, { name: text })}
                     autoFocus
                   />
+                  {/* Kind toggle */}
+                  <View style={styles.kindRow}>
+                    <Pressable
+                      style={[styles.kindBtn, item.kind === 'labour' && styles.kindBtnActive]}
+                      onPress={() => updateItem(idx, { kind: 'labour', unit: item.unit === '×' ? 'hr' : item.unit })}
+                    >
+                      <Icon name="schedule" size={16} color={item.kind === 'labour' ? colors.blue : colors.textMuted} />
+                      <Text style={[styles.kindBtnText, item.kind === 'labour' && styles.kindBtnTextActive]}>Labour</Text>
+                    </Pressable>
+                    <Pressable
+                      style={[styles.kindBtn, item.kind === 'material' && styles.kindBtnActive]}
+                      onPress={() => updateItem(idx, { kind: 'material', estimatedHours: undefined })}
+                    >
+                      <Icon name="inventory_2" size={16} color={item.kind === 'material' ? colors.blue : colors.textMuted} />
+                      <Text style={[styles.kindBtnText, item.kind === 'material' && styles.kindBtnTextActive]}>Material</Text>
+                    </Pressable>
+                  </View>
                   <View style={styles.editRow}>
                     <View style={styles.editField}>
                       <Text style={styles.editLabel}>Qty</Text>
@@ -271,7 +305,9 @@ export function EstimateScreen({ navigation, route }: Props) {
                         value={String(item.quantity)}
                         onChangeText={(text) => {
                           const n = parseFloat(text) || 0;
-                          updateItem(idx, { quantity: n });
+                          const patch: Partial<LineItem> = { quantity: n };
+                          if (item.kind === 'labour') patch.estimatedHours = n;
+                          updateItem(idx, patch);
                         }}
                       />
                     </View>
@@ -298,6 +334,24 @@ export function EstimateScreen({ navigation, route }: Props) {
                       />
                     </View>
                   </View>
+                  {/* Estimated hours for labour */}
+                  {item.kind === 'labour' && (
+                    <View style={styles.hoursRow}>
+                      <Icon name="schedule" size={16} color={colors.blue} />
+                      <Text style={styles.hoursLabel}>Est. hours</Text>
+                      <TextInput
+                        style={styles.hoursInput}
+                        keyboardType="numeric"
+                        value={item.estimatedHours != null && item.estimatedHours > 0 ? String(item.estimatedHours) : ''}
+                        placeholder="0"
+                        placeholderTextColor={colors.textMuted}
+                        onChangeText={(text) => {
+                          const n = parseFloat(text) || 0;
+                          updateItem(idx, { estimatedHours: n });
+                        }}
+                      />
+                    </View>
+                  )}
                   <View style={styles.editActions}>
                     <Pressable
                       style={styles.editDeleteBtn}
@@ -326,6 +380,13 @@ export function EstimateScreen({ navigation, route }: Props) {
                 style={[styles.lineItem, needsAttention && styles.lineItemIncomplete]}
                 onPress={() => setEditingIdx(idx)}
               >
+                <View style={styles.kindBadge}>
+                  <Icon
+                    name={item.kind === 'labour' ? 'schedule' : 'inventory_2'}
+                    size={14}
+                    color={item.kind === 'labour' ? colors.blue : colors.textSecondary}
+                  />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.lineItemName}>
                     {item.name || 'Untitled item'}
@@ -339,11 +400,13 @@ export function EstimateScreen({ navigation, route }: Props) {
                     </View>
                   ) : (
                     <Text style={styles.lineItemQty}>
-                      {item.unit
-                        ? `${item.quantity} ${item.unit} $${item.unitPrice.toFixed(2)}`
-                        : item.unitPrice > 0
-                          ? `$${item.unitPrice.toFixed(2)}`
-                          : 'Tap to edit'}
+                      {item.kind === 'labour' && item.estimatedHours
+                        ? `${item.estimatedHours}h · $${item.unitPrice.toFixed(2)}/hr`
+                        : item.unit
+                          ? `${item.quantity} ${item.unit} $${item.unitPrice.toFixed(2)}`
+                          : item.unitPrice > 0
+                            ? `$${item.unitPrice.toFixed(2)}`
+                            : 'Tap to edit'}
                     </Text>
                   )}
                 </View>
@@ -564,6 +627,85 @@ const styles = StyleSheet.create({
     letterSpacing: 0.56,
     textTransform: 'uppercase',
     color: colors.textInverse,
+  },
+  descriptionSection: {
+    paddingHorizontal: 20,
+    paddingTop: 6,
+    paddingBottom: 4,
+  },
+  jobDescInput: {
+    fontFamily: fonts.body,
+    fontSize: 15,
+    color: colors.dark,
+    backgroundColor: colors.cardBg,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radii.lg,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    minHeight: 48,
+  },
+  kindRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  kindBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 8,
+    borderRadius: radii.sm,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    backgroundColor: colors.cardBg,
+  },
+  kindBtnActive: {
+    borderColor: colors.blue,
+    backgroundColor: colors.blueLight,
+  },
+  kindBtnText: {
+    fontFamily: fonts.heading,
+    fontSize: 13,
+    color: colors.textSecondary,
+  },
+  kindBtnTextActive: {
+    color: colors.blue,
+  },
+  kindBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 8,
+    backgroundColor: colors.blueLight,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 4,
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: colors.blueLight,
+    borderRadius: radii.sm,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  hoursLabel: {
+    fontFamily: fonts.bodySemiBold,
+    fontSize: 13,
+    color: colors.blue,
+    flex: 1,
+  },
+  hoursInput: {
+    fontFamily: fonts.monoBold,
+    fontSize: 16,
+    color: colors.dark,
+    width: 60,
+    textAlign: 'right',
+    borderBottomWidth: 1,
+    borderBottomColor: colors.blueBorder,
+    paddingVertical: 2,
   },
   lineItemsScroll: {
     flex: 1,

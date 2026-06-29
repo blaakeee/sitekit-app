@@ -9,6 +9,7 @@ export { EmployeeProfileScreen } from './EmployeeProfileScreen';
 export { EmployeeScheduleScreen } from './EmployeeScheduleScreen';
 export { EmployeeCertsScreen } from './EmployeeCertsScreen';
 export { FlagIssueScreen } from './FlagIssueScreen';
+export { TimePartsScreen } from './TimePartsScreen';
 export { PhotoViewerScreen } from './PhotoViewerScreen';
 export { CallScreen } from './CallScreen';
 export { SendNoteScreen } from './SendNoteScreen';

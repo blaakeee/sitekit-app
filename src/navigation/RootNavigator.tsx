@@ -14,6 +14,7 @@ import {
   EmployeeScheduleScreen,
   EmployeeCertsScreen,
   FlagIssueScreen,
+  TimePartsScreen,
   PhotoViewerScreen,
   CallScreen,
   SendNoteScreen,
@@ -62,6 +63,7 @@ export function RootNavigator() {
       <Stack.Screen name="PhotoCapture" component={CameraScreen} />
       <Stack.Screen name="PhotoViewer" component={PhotoViewerScreen} />
       <Stack.Screen name="FlagIssue" component={FlagIssueScreen} />
+      <Stack.Screen name="TimeParts" component={TimePartsScreen} />
       <Stack.Screen name="CallScreen" component={CallScreen} />
       <Stack.Screen name="SendNote" component={SendNoteScreen} />
       <Stack.Screen name="Inventory" component={InventoryScreen} />

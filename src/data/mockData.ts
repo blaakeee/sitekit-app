@@ -133,7 +133,7 @@ export const inventoryItems: InventoryItem[] = [
 ];
 
 export const estimateLineItems: LineItem[] = [
-  { id: '1', name: 'Downlight LED 6W', quantity: 4, unit: '×', unitPrice: 12.0 },
-  { id: '2', name: 'Labour', quantity: 1.5, unit: 'hr ×', unitPrice: 90.0 },
-  { id: '3', name: 'Call-out fee', quantity: 1, unit: '', unitPrice: 90.0 },
+  { id: '1', name: 'Downlight LED 6W', kind: 'material', quantity: 4, unit: '×', unitPrice: 12.0 },
+  { id: '2', name: 'Labour', kind: 'labour', quantity: 1.5, unit: 'hr', unitPrice: 90.0, estimatedHours: 1.5 },
+  { id: '3', name: 'Call-out fee', kind: 'labour', quantity: 1, unit: '', unitPrice: 90.0 },
 ];

@@ -111,7 +111,10 @@ export function JobCaptureScreen({ navigation, route }: Props) {
           <Icon name="photo_camera" size={44} color={colors.dark} />
           <Text style={[styles.captureButtonText, { color: colors.dark }]}>PHOTO</Text>
         </Pressable>
-        <Pressable style={[styles.captureButton, { backgroundColor: colors.dark }, shadows.buttonDark]}>
+        <Pressable
+          style={[styles.captureButton, { backgroundColor: colors.dark }, shadows.buttonDark]}
+          onPress={() => navigation.navigate('TimeParts', { jobId: job.id })}
+        >
           <Icon name="schedule" size={44} color={colors.textInverse} />
           <Text style={styles.captureButtonText}>TIME + PARTS</Text>
         </Pressable>
